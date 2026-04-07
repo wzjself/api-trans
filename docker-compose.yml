@@ -7,15 +7,17 @@ services:
       - "18080:3000"
     environment:
       PORT: 3000
-      DATA_DIR: /app/data
       APP_BASE_URL: http://64.23.161.180:18080
       VITE_PUBLIC_API_BASE: http://64.23.161.180:18080
-      ADMIN_EMAIL: admin@wzjself.com
-      ADMIN_PASSWORD: 123456
+      ADMIN_EMAIL: wzjself
+      ADMIN_PASSWORD: wzj147258
       ADMIN_INITIAL_BALANCE: 1000000
       TOKEN_SECRET: change-this-secret
-      UPSTREAM_BASE_URL: ""
-      UPSTREAM_API_KEY: ""
-    volumes:
-      - ./data:/app/data
+      MYSQL_HOST: host.docker.internal
+      MYSQL_PORT: 3306
+      MYSQL_USER: root
+      MYSQL_PASSWORD: wzjself
+      MYSQL_DATABASE: api_trans
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     restart: unless-stopped

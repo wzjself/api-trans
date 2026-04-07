@@ -77,5 +77,25 @@ export const dataService = {
 
   updateSettings: async (settings: any) => {
     return apiClient.put('/api/settings', settings);
+  },
+
+  subscribeProviders: (callback: (data: any) => void) => {
+    let cancelled = false;
+    apiClient.get('/api/admin/providers').then((data) => {
+      if (!cancelled) callback(data);
+    }).catch(console.error);
+    return () => { cancelled = true; };
+  },
+
+  saveProvider: async (provider: any) => {
+    return apiClient.post('/api/admin/providers', provider);
+  },
+
+  deleteProvider: async (id: string) => {
+    return apiClient.delete(`/api/admin/providers/${encodeURIComponent(id)}`);
+  },
+
+  selectProvider: async (activeProviderId: string, activeModel: string) => {
+    return apiClient.put('/api/admin/provider-selection', { activeProviderId, activeModel });
   }
 };
