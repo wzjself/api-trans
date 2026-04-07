@@ -122,13 +122,32 @@ async function getUserByEmail(email) {
   return rows[0] || null;
 }
 
-async function getActiveProvider() {
+async function getEnabledProviders() {
+  const rows = await query('SELECT * FROM upstream_providers WHERE enabled = 1 ORDER BY updated_at DESC, created_at DESC');
+  return rows;
+}
+
+async function getProviderRouting(modelHint = '') {
   const settings = await getSetting('system', {});
-  const activeProviderId = settings.activeProviderId || null;
-  const activeModel = settings.activeModel || '';
-  if (!activeProviderId) return { provider: null, activeModel };
-  const rows = await query('SELECT * FROM upstream_providers WHERE id = :id LIMIT 1', { id: activeProviderId });
-  return { provider: rows[0] || null, activeModel };
+  const defaultModel = settings.defaultModel || '';
+  const requestedModel = String(modelHint || defaultModel || '').trim();
+  const providers = await getEnabledProviders();
+  if (!providers.length) return { provider: null, model: requestedModel, providers: [] };
+
+  if (!requestedModel) {
+    return { provider: providers[0], model: '', providers };
+  }
+
+  const matched = providers.find((row) => {
+    try {
+      const models = JSON.parse(row.models_json || '[]');
+      return Array.isArray(models) && models.includes(requestedModel);
+    } catch {
+      return false;
+    }
+  });
+
+  return { provider: matched || providers[0], model: requestedModel, providers };
 }
 
 async function ensureSchema() {
@@ -222,15 +241,13 @@ async function ensureSchema() {
     await setSetting('system', {
       guideLink: '',
       appBaseUrl: APP_BASE_URL,
-      activeProviderId: null,
-      activeModel: '',
+      defaultModel: '',
     });
   } else {
     await setSetting('system', {
       guideLink: currentSettings.guideLink || '',
       appBaseUrl: APP_BASE_URL || currentSettings.appBaseUrl || '',
-      activeProviderId: currentSettings.activeProviderId || null,
-      activeModel: currentSettings.activeModel || '',
+      defaultModel: currentSettings.defaultModel || currentSettings.activeModel || '',
     });
   }
 
@@ -327,14 +344,15 @@ async function findUserByApiKey(key) {
 }
 
 app.get('/api/health', async (_req, res) => {
-  const { provider, activeModel } = await getActiveProvider();
+  const routing = await getProviderRouting();
   res.json({
     ok: true,
     appBaseUrl: APP_BASE_URL || null,
     mysql: true,
-    upstreamConfigured: Boolean(provider?.base_url),
-    activeProvider: provider ? { id: provider.id, name: provider.name } : null,
-    activeModel,
+    upstreamConfigured: Boolean(routing.provider?.base_url),
+    activeProvider: routing.provider ? { id: routing.provider.id, name: routing.provider.name } : null,
+    activeModel: routing.model || '',
+    enabledProviders: routing.providers.length,
   });
 });
 
@@ -395,8 +413,7 @@ app.get('/api/admin/providers', authMiddleware, adminMiddleware, async (_req, re
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     })),
-    activeProviderId: system.activeProviderId || null,
-    activeModel: system.activeModel || '',
+    defaultModel: system.defaultModel || '',
   });
 });
 
@@ -461,19 +478,19 @@ app.post('/api/admin/providers', authMiddleware, adminMiddleware, async (req, re
 
 app.delete('/api/admin/providers/:id', authMiddleware, adminMiddleware, async (req, res) => {
   await query('DELETE FROM upstream_providers WHERE id = :id', { id: req.params.id });
-  const system = await getSetting('system', {});
-  if (system.activeProviderId === req.params.id) {
-    await setSetting('system', { ...system, activeProviderId: null, activeModel: '' });
-  }
   res.json({ ok: true });
 });
 
-app.put('/api/admin/provider-selection', authMiddleware, adminMiddleware, async (req, res) => {
+app.put('/api/admin/providers/:id/enabled', authMiddleware, adminMiddleware, async (req, res) => {
+  await query('UPDATE upstream_providers SET enabled = :enabled WHERE id = :id', { id: req.params.id, enabled: req.body?.enabled ? 1 : 0 });
+  res.json({ ok: true });
+});
+
+app.put('/api/admin/default-model', authMiddleware, adminMiddleware, async (req, res) => {
   const current = await getSetting('system', {});
   const nextValue = {
     ...current,
-    activeProviderId: req.body?.activeProviderId || null,
-    activeModel: req.body?.activeModel || '',
+    defaultModel: req.body?.defaultModel || '',
   };
   await setSetting('system', nextValue);
   res.json(nextValue);
@@ -626,7 +643,8 @@ app.delete('/api/admin/codes/:code', authMiddleware, adminMiddleware, async (req
 });
 
 app.get('/v1/models', async (_req, res) => {
-  const { provider } = await getActiveProvider();
+  const routing = await getProviderRouting();
+  const provider = routing.provider;
   if (!provider) {
     return res.json({ object: 'list', data: [{ id: 'unconfigured', object: 'model', owned_by: 'local' }] });
   }
@@ -691,8 +709,10 @@ app.all(/^\/v1\/(.+)/, async (req, res) => {
   const found = await findUserByApiKey(apiKey);
   if (!found) return res.status(401).json({ error: 'Invalid API key' });
 
-  const { provider, activeModel } = await getActiveProvider();
-  if (!provider?.base_url) return res.status(503).json({ error: 'No active upstream provider configured' });
+  const routing = await getProviderRouting(req.body?.model || '');
+  const provider = routing.provider;
+  const activeModel = routing.model;
+  if (!provider?.base_url) return res.status(503).json({ error: 'No enabled upstream provider configured' });
 
   const user = await getUserByUid(found.uid);
   const quota = await getQuotaStatus(user);

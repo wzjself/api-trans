@@ -103,7 +103,11 @@ export const dataService = {
     return apiClient.delete(`/api/admin/providers/${encodeURIComponent(id)}`);
   },
 
-  selectProvider: async (activeProviderId: string, activeModel: string) => {
-    return apiClient.put('/api/admin/provider-selection', { activeProviderId, activeModel });
+  setProviderEnabled: async (id: string, enabled: boolean) => {
+    return apiClient.put(`/api/admin/providers/${encodeURIComponent(id)}/enabled`, { enabled });
+  },
+
+  saveDefaultModel: async (defaultModel: string) => {
+    return apiClient.put('/api/admin/default-model', { defaultModel });
   }
 };

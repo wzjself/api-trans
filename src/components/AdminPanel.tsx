@@ -47,8 +47,7 @@ export const AdminPanel: React.FC = () => {
   const [settings, setSettings] = useState({ guideLink: "" });
   const [isSavingSettings, setIsSavingSettings] = useState(false);
   const [providers, setProviders] = useState<ProviderConfig[]>([]);
-  const [activeProviderId, setActiveProviderId] = useState("");
-  const [activeModel, setActiveModel] = useState("");
+  const [defaultModel, setDefaultModel] = useState("");
   const [providerForm, setProviderForm] = useState<ProviderConfig>({ id: "", name: "", baseUrl: "", apiKey: "", enabled: true, models: [] });
   const [providerModelsInput, setProviderModelsInput] = useState("");
   const [isSavingProvider, setIsSavingProvider] = useState(false);
@@ -84,8 +83,7 @@ export const AdminPanel: React.FC = () => {
     const unsubSettings = dataService.subscribeSettings((data) => setSettings(data || { guideLink: "" }));
     const unsubProviders = dataService.subscribeProviders((data) => {
       setProviders(data.providers || []);
-      setActiveProviderId(data.activeProviderId || "");
-      setActiveModel(data.activeModel || "");
+      setDefaultModel(data.defaultModel || "");
     });
     return () => {
       unsubUsers();
@@ -176,9 +174,14 @@ export const AdminPanel: React.FC = () => {
     }
   };
 
-  const saveSelection = async () => {
-    await dataService.selectProvider(activeProviderId, activeModel);
+  const saveDefaultModel = async () => {
+    await dataService.saveDefaultModel(defaultModel);
     loadAdminData();
+  };
+
+  const toggleProviderEnabled = async (id: string, enabled: boolean) => {
+    await dataService.setProviderEnabled(id, enabled);
+    setProviders((prev) => prev.map((p) => p.id === id ? { ...p, enabled } : p));
   };
 
   const removeProvider = async (id: string) => {
@@ -225,23 +228,23 @@ export const AdminPanel: React.FC = () => {
           </div>
           <div className="p-6 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/50 space-y-4">
             <div className="space-y-3">
-              <select className="w-full px-3 py-2 text-sm rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900" value={activeProviderId} onChange={(e) => setActiveProviderId(e.target.value)}>
-                <option value="">选择默认渠道</option>
-                {providers.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-              </select>
-              <input className="w-full px-3 py-2 text-sm rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900" placeholder="默认模型，如 gpt-4o-mini" value={activeModel} onChange={(e) => setActiveModel(e.target.value)} />
-              <button onClick={saveSelection} className="px-6 py-2 text-sm font-medium text-white bg-zinc-900 dark:bg-zinc-100 dark:text-zinc-900 rounded-xl">保存默认上游</button>
+              <input className="w-full px-3 py-2 text-sm rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900" placeholder="默认模型，如 gpt-4o-mini" value={defaultModel} onChange={(e) => setDefaultModel(e.target.value)} />
+              <button onClick={saveDefaultModel} className="px-6 py-2 text-sm font-medium text-white bg-zinc-900 dark:bg-zinc-100 dark:text-zinc-900 rounded-xl">保存默认模型</button>
             </div>
             <div className="space-y-3">
               {providers.map((p) => (
                 <div key={p.id} className="p-4 rounded-xl border border-zinc-200 dark:border-zinc-800">
                   <div className="flex items-center justify-between gap-3">
                     <div>
-                      <div className="font-medium">{p.name}</div>
+                      <div className="font-medium flex items-center gap-2">{p.name}{p.enabled ? <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">已启用</span> : <span className="text-[10px] px-2 py-0.5 rounded-full bg-zinc-100 text-zinc-500">已禁用</span>}</div>
                       <div className="text-xs text-zinc-500 break-all">{p.baseUrl}</div>
                       <div className="text-xs text-zinc-500">模型：{(p.models || []).join(', ') || '未填写'}</div>
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex gap-2 items-center">
+                      <label className="text-xs text-zinc-500 flex items-center gap-2">
+                        <input type="checkbox" checked={p.enabled} onChange={(e) => toggleProviderEnabled(p.id, e.target.checked)} />
+                        启用
+                      </label>
                       <button onClick={() => { setProviderForm(p); setProviderModelsInput((p.models || []).join('\n')); }} className="text-xs text-zinc-500 hover:text-zinc-900">编辑</button>
                       <button onClick={() => removeProvider(p.id)} className="text-xs text-red-500">删除</button>
                     </div>
