@@ -126,5 +126,15 @@ export const dataService = {
     run();
     const timer = window.setInterval(run, POLL_MEDIUM);
     return () => { cancelled = true; window.clearInterval(timer); };
+  },
+
+  subscribePlatformTrend: (callback: (trend: any[]) => void) => {
+    let cancelled = false;
+    const run = () => apiClient.get('/api/admin/platform-trend').then((data) => {
+      if (!cancelled) callback(data as any[]);
+    }).catch(console.error);
+    run();
+    const timer = window.setInterval(run, POLL_MEDIUM);
+    return () => { cancelled = true; window.clearInterval(timer); };
   }
 };

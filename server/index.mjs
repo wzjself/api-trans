@@ -558,7 +558,7 @@ app.get('/api/users/me/logs', authMiddleware, async (req, res) => {
 
 app.get('/api/admin/platform-summary', authMiddleware, adminMiddleware, async (_req, res) => {
   const [userRow] = await query('SELECT COUNT(*) AS totalUsers FROM users');
-  const [keyRow] = await query('SELECT COUNT(*) AS totalApiKeys FROM api_keys WHERE status = \"active\"');
+  const [keyRow] = await query('SELECT COUNT(*) AS totalApiKeys FROM api_keys WHERE status = "active"');
   const [usageRow] = await query('SELECT COUNT(*) AS totalRequests, COALESCE(SUM(tokens),0) AS totalTokens FROM usage_logs');
   const [todayRow] = await query('SELECT COALESCE(SUM(tokens),0) AS todayTokens FROM usage_logs WHERE DATE(created_at) = CURRENT_DATE()');
   res.json({
@@ -568,6 +568,29 @@ app.get('/api/admin/platform-summary', authMiddleware, adminMiddleware, async (_
     totalTokens: Number(usageRow?.totalTokens || 0),
     todayTokens: Number(todayRow?.todayTokens || 0),
   });
+});
+
+app.get('/api/admin/platform-trend', authMiddleware, adminMiddleware, async (_req, res) => {
+  const rows = await query(`
+    WITH RECURSIVE days AS (
+      SELECT DATE_SUB(CURRENT_DATE(), INTERVAL 13 DAY) AS d
+      UNION ALL
+      SELECT DATE_ADD(d, INTERVAL 1 DAY) FROM days WHERE d < CURRENT_DATE()
+    )
+    SELECT
+      DATE_FORMAT(days.d, '%m-%d') AS day,
+      COALESCE(COUNT(ul.id), 0) AS requests,
+      COALESCE(SUM(ul.tokens), 0) AS tokens
+    FROM days
+    LEFT JOIN usage_logs ul ON DATE(ul.created_at) = days.d
+    GROUP BY days.d
+    ORDER BY days.d ASC
+  `);
+  res.json(rows.map((row) => ({
+    day: row.day,
+    requests: Number(row.requests || 0),
+    tokens: Number(row.tokens || 0),
+  })));
 });
 
 app.post('/api/users/me/logs/simulate', authMiddleware, async (req, res) => {

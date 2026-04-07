@@ -3,6 +3,7 @@ import { dataService } from "../services/dataService";
 import { Users, Key, Plus, Trash2, Shield, User as UserIcon, Check, Copy, Settings, Database, Save, RefreshCw } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { cn } from "../lib/utils";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 
 interface RedemptionCode {
   code: string;
@@ -53,6 +54,7 @@ export const AdminPanel: React.FC = () => {
   const [isSavingProvider, setIsSavingProvider] = useState(false);
   const [isFetchingModels, setIsFetchingModels] = useState(false);
   const [platformSummary, setPlatformSummary] = useState({ totalUsers: 0, totalApiKeys: 0, totalRequests: 0, totalTokens: 0, todayTokens: 0 });
+  const [platformTrend, setPlatformTrend] = useState<any[]>([]);
 
   const safeCopy = async (text: string) => {
     try {
@@ -89,12 +91,16 @@ export const AdminPanel: React.FC = () => {
     const unsubPlatformSummary = dataService.subscribePlatformSummary((data) => {
       setPlatformSummary(data || { totalUsers: 0, totalApiKeys: 0, totalRequests: 0, totalTokens: 0, todayTokens: 0 });
     });
+    const unsubPlatformTrend = dataService.subscribePlatformTrend((data) => {
+      setPlatformTrend(data || []);
+    });
     return () => {
       unsubUsers();
       unsubCodes();
       unsubSettings();
       unsubProviders();
       unsubPlatformSummary();
+      unsubPlatformTrend();
     };
   };
 
@@ -217,6 +223,27 @@ export const AdminPanel: React.FC = () => {
         <div className="p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/50"><div className="text-xs text-zinc-500">总请求数</div><div className="text-2xl font-bold tracking-tight">{platformSummary.totalRequests.toLocaleString()}</div></div>
         <div className="p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/50"><div className="text-xs text-zinc-500">平台总消耗</div><div className="text-2xl font-bold tracking-tight">{platformSummary.totalTokens.toLocaleString()}</div></div>
         <div className="p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/50"><div className="text-xs text-zinc-500">今日消耗</div><div className="text-2xl font-bold tracking-tight">{platformSummary.todayTokens.toLocaleString()}</div></div>
+      </div>
+
+      <div className="p-6 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/50 space-y-6">
+        <div className="flex items-center justify-between">
+          <h3 className="text-lg font-semibold tracking-tight">平台请求与消耗趋势</h3>
+          <div className="text-xs text-zinc-500">最近 14 天</div>
+        </div>
+        <div className="h-[320px] w-full">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={platformTrend} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e5e5" className="dark:stroke-zinc-800" />
+              <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: "#888" }} dy={10} />
+              <YAxis yAxisId="left" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: "#888" }} />
+              <YAxis yAxisId="right" orientation="right" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: "#888" }} />
+              <Tooltip />
+              <Legend />
+              <Bar yAxisId="left" dataKey="requests" name="请求数" fill="#3b82f6" radius={[4,4,0,0]} />
+              <Bar yAxisId="right" dataKey="tokens" name="Token 消耗" fill="#10b981" radius={[4,4,0,0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
       </div>
       <div className="space-y-6">
         <div className="flex items-center gap-2 text-xl font-semibold tracking-tight">
