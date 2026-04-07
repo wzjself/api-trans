@@ -1,0 +1,142 @@
+// ===============================================================
+// Assumed Data Model
+// ===============================================================
+//
+// Collection: users
+// Document ID: {uid}
+// Fields:
+//   - uid: string (required)
+//   - email: string (required, email format)
+//   - role: string (required, enum: ["admin", "user"])
+//   - balance: number (optional, default: 0)
+//   - quotaType: string (optional, enum: ["none", "daily", "monthly"])
+//   - dailyQuota: number (optional, default: 0)
+//   - quotaExpiresAt: timestamp (optional)
+//   - createdAt: timestamp (required)
+//
+// Collection: api_keys
+// Document ID: {keyId}
+// Fields:
+//   - id: string (required)
+//   - uid: string (required)
+//   - name: string (required)
+//   - key: string (required)
+//   - createdAt: timestamp (required)
+//   - status: string (required, enum: ["active", "revoked"])
+//
+// Collection: usage_logs
+// Document ID: {logId}
+// Fields:
+//   - uid: string (required)
+//   - keyId: string (optional)
+//   - tokens: number (required)
+//   - cost: number (optional)
+//   - timestamp: timestamp (required)
+//   - model: string (optional)
+//
+// Collection: redemption_codes
+// Document ID: {code}
+// Fields:
+//   - code: string (required)
+//   - type: string (required, enum: ["permanent", "daily", "monthly"])
+//   - value: number (required)
+//   - durationDays: number (optional)
+//   - isUsed: boolean (required)
+//   - usedBy: string (optional)
+//   - usedAt: timestamp (optional)
+//   - createdAt: timestamp (required)
+//
+// ===============================================================
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+         (request.auth.token.email == "wzjself@gmail.com" && request.auth.token.email_verified == true));
+    }
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'email', 'role', 'createdAt']) &&
+             data.uid is string &&
+             data.email is string &&
+             data.role in ['admin', 'user'] &&
+             data.createdAt is timestamp;
+    }
+
+    function isValidApiKey(data) {
+      return data.keys().hasAll(['id', 'uid', 'name', 'key', 'createdAt', 'status']) &&
+             data.id is string &&
+             data.uid is string &&
+             data.name is string && data.name.size() < 100 &&
+             data.key is string &&
+             data.createdAt is timestamp &&
+             data.status in ['active', 'revoked'];
+    }
+
+    function isValidUsageLog(data) {
+      return data.keys().hasAll(['uid', 'tokens', 'timestamp']) &&
+             data.uid is string &&
+             data.tokens is number &&
+             data.timestamp is timestamp;
+    }
+
+    function isValidRedemptionCode(data) {
+      return data.keys().hasAll(['code', 'type', 'value', 'isUsed', 'createdAt']) &&
+             data.code is string &&
+             data.type in ['permanent', 'daily', 'monthly'] &&
+             data.value is number &&
+             data.isUsed is bool &&
+             data.createdAt is timestamp;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isAuthenticated() && isValidUser(request.resource.data) && (isOwner(userId) || isAdmin());
+      allow update: if isAuthenticated() && isValidUser(request.resource.data) && (isOwner(userId) || isAdmin());
+    }
+
+    match /api_keys/{keyId} {
+      allow read: if isAuthenticated() && (resource.data.uid == request.auth.uid || isAdmin());
+      allow create: if isAuthenticated() && isValidApiKey(request.resource.data) && request.resource.data.uid == request.auth.uid;
+      allow update: if isAuthenticated() && isValidApiKey(request.resource.data) && (resource.data.uid == request.auth.uid || isAdmin());
+      allow delete: if isAuthenticated() && (resource.data.uid == request.auth.uid || isAdmin());
+    }
+
+    match /usage_logs/{logId} {
+      allow read: if isAuthenticated() && (resource.data.uid == request.auth.uid || isAdmin());
+      allow create: if false; // Only server-side or admin should create logs? 
+      // Actually, for this app, we might create logs from the client when simulating usage.
+      allow create: if isAuthenticated() && isValidUsageLog(request.resource.data) && request.resource.data.uid == request.auth.uid;
+    }
+
+    match /redemption_codes/{code} {
+      allow read: if isAuthenticated(); // Users need to check if code exists/is valid
+      allow create: if isAdmin();
+      allow update: if isAuthenticated() && 
+                    request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isUsed', 'usedBy', 'usedAt']) &&
+                    resource.data.isUsed == false &&
+                    request.resource.data.isUsed == true &&
+                    request.resource.data.usedBy == request.auth.uid;
+      allow delete: if isAdmin();
+    }
+  }
+}

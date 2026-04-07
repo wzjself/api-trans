@@ -1,0 +1,178 @@
+import React, { useState, useEffect, useMemo } from "react";
+import { useAuth } from "../contexts/AuthContext";
+import { dataService } from "../services/dataService";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from "recharts";
+import { format, startOfDay, startOfHour, eachDayOfInterval, eachHourOfInterval, subDays, subHours, isSameDay, isSameHour } from "date-fns";
+import { Activity, Zap, PieChart } from "lucide-react";
+import { cn } from "../lib/utils";
+
+interface UsageLog {
+  id: string;
+  tokens: number;
+  timestamp: any;
+}
+
+export const UsageChart: React.FC = () => {
+  const { profile } = useAuth();
+  const [logs, setLogs] = useState<UsageLog[]>([]);
+  const [view, setView] = useState<"hourly" | "daily">("daily");
+
+  useEffect(() => {
+    if (!profile) return;
+    const unsubscribe = dataService.subscribeLogs(profile.uid, (data) => {
+      const fetchedLogs = data.map(log => ({
+        ...log,
+        timestamp: log.timestamp?.toDate ? log.timestamp.toDate() : new Date(log.timestamp)
+      }));
+      setLogs(fetchedLogs as UsageLog[]);
+    });
+    return () => unsubscribe();
+  }, [profile]);
+
+  const chartData = useMemo(() => {
+    if (view === "daily") {
+      const days = eachDayOfInterval({
+        start: subDays(new Date(), 14),
+        end: new Date(),
+      });
+      return days.map(day => {
+        const total = logs
+          .filter(log => isSameDay(log.timestamp, day))
+          .reduce((sum, log) => sum + log.tokens, 0);
+        return {
+          name: format(day, "MM-dd"),
+          tokens: total,
+        };
+      });
+    } else {
+      const hours = eachHourOfInterval({
+        start: subHours(new Date(), 24),
+        end: new Date(),
+      });
+      return hours.map(hour => {
+        const total = logs
+          .filter(log => isSameHour(log.timestamp, hour))
+          .reduce((sum, log) => sum + log.tokens, 0);
+        return {
+          name: format(hour, "HH:00"),
+          tokens: total,
+        };
+      });
+    }
+  }, [logs, view]);
+
+  const stats = useMemo(() => {
+    const totalTokens = logs.reduce((sum, log) => sum + log.tokens, 0);
+    const totalCount = logs.length;
+    
+    let remainingQuota = profile?.balance || 0;
+    let quotaLabel = "剩余额度";
+
+    if (profile?.quotaType && profile.quotaType !== "none") {
+      const today = new Date();
+      const todayUsage = logs
+        .filter(log => isSameDay(log.timestamp, today))
+        .reduce((sum, log) => sum + log.tokens, 0);
+      
+      remainingQuota = Math.max(0, profile.dailyQuota - todayUsage);
+      quotaLabel = profile.quotaType === "daily" ? "今日剩余 (天卡)" : "今日剩余 (月卡)";
+    }
+
+    return { totalTokens, totalCount, remainingQuota, quotaLabel };
+  }, [logs, profile]);
+
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/50 space-y-2">
+          <div className="flex items-center gap-2 text-zinc-500 text-sm font-medium">
+            <Zap className="w-4 h-4" />
+            <span>总已用额度</span>
+          </div>
+          <div className="text-2xl font-bold tracking-tight">
+            {stats.totalTokens.toLocaleString()} <span className="text-xs font-normal text-zinc-500">Tokens</span>
+          </div>
+        </div>
+        <div className="p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/50 space-y-2">
+          <div className="flex items-center gap-2 text-zinc-500 text-sm font-medium">
+            <Activity className="w-4 h-4" />
+            <span>使用次数</span>
+          </div>
+          <div className="text-2xl font-bold tracking-tight">
+            {stats.totalCount.toLocaleString()} <span className="text-xs font-normal text-zinc-500">次</span>
+          </div>
+        </div>
+        <div className="p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/50 space-y-2">
+          <div className="flex items-center gap-2 text-zinc-500 text-sm font-medium">
+            <PieChart className="w-4 h-4" />
+            <span>{stats.quotaLabel}</span>
+          </div>
+          <div className="text-2xl font-bold tracking-tight">
+            {stats.remainingQuota.toLocaleString()} <span className="text-xs font-normal text-zinc-500">Tokens</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="p-6 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/50 space-y-6">
+        <div className="flex items-center justify-between">
+          <h3 className="text-lg font-semibold tracking-tight">额度使用趋势</h3>
+          <div className="flex bg-zinc-100 dark:bg-zinc-800 p-1 rounded-lg">
+            <button
+              onClick={() => setView("hourly")}
+              className={cn(
+                "px-3 py-1 text-xs font-medium rounded-md transition-all",
+                view === "hourly" ? "bg-white dark:bg-zinc-700 shadow-sm" : "text-zinc-500"
+              )}
+            >
+              24小时
+            </button>
+            <button
+              onClick={() => setView("daily")}
+              className={cn(
+                "px-3 py-1 text-xs font-medium rounded-md transition-all",
+                view === "daily" ? "bg-white dark:bg-zinc-700 shadow-sm" : "text-zinc-500"
+              )}
+            >
+              14天
+            </button>
+          </div>
+        </div>
+
+        <div className="h-[300px] w-full">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e5e5" className="dark:stroke-zinc-800" />
+              <XAxis
+                dataKey="name"
+                axisLine={false}
+                tickLine={false}
+                tick={{ fontSize: 10, fill: "#888" }}
+                dy={10}
+              />
+              <YAxis
+                axisLine={false}
+                tickLine={false}
+                tick={{ fontSize: 10, fill: "#888" }}
+              />
+              <Tooltip
+                cursor={{ fill: "rgba(0,0,0,0.05)" }}
+                contentStyle={{
+                  borderRadius: "12px",
+                  border: "none",
+                  boxShadow: "0 10px 15px -3px rgba(0,0,0,0.1)",
+                  fontSize: "12px",
+                  backgroundColor: "rgba(255,255,255,0.9)",
+                }}
+              />
+              <Bar dataKey="tokens" radius={[4, 4, 0, 0]}>
+                {chartData.map((entry, index) => (
+                  <Cell key={`cell-${index}`} fill={view === "hourly" ? "#3b82f6" : "#10b981"} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+    </div>
+  );
+};

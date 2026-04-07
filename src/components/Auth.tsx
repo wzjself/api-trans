@@ -1,0 +1,185 @@
+import React, { useState } from "react";
+import { auth, handleFirestoreError, OperationType } from "../firebase";
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from "firebase/auth";
+import { motion, AnimatePresence } from "motion/react";
+import { Shield, Zap, Key, BarChart3, Globe, Mail, Lock, UserPlus, LogIn, Loader2, AlertCircle } from "lucide-react";
+import { cn } from "../lib/utils";
+import { useAuth, USE_FIREBASE } from "../contexts/AuthContext";
+import { storageService } from "../services/storageService";
+
+export const Auth: React.FC = () => {
+  const { refreshProfile } = useAuth();
+  const [isLogin, setIsLogin] = useState(true);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+
+    try {
+      if (USE_FIREBASE) {
+        if (isLogin) {
+          await signInWithEmailAndPassword(auth, email, password);
+        } else {
+          await createUserWithEmailAndPassword(auth, email, password);
+        }
+      } else {
+        // 本地模式
+        if (isLogin) {
+          storageService.login(email, password);
+        } else {
+          storageService.register(email, password);
+        }
+        refreshProfile();
+      }
+    } catch (err: any) {
+      console.error("Auth Error:", err.code, err.message);
+      if (!USE_FIREBASE) {
+        setError(err.message);
+        return;
+      }
+      let message = "认证失败，请检查您的输入。";
+      switch (err.code) {
+        case "auth/user-not-found":
+          message = "该用户不存在，请先注册。";
+          break;
+        case "auth/wrong-password":
+          message = "密码错误，请重试。";
+          break;
+        case "auth/invalid-credential":
+          message = "邮箱或密码错误。";
+          break;
+        case "auth/email-already-in-use":
+          message = "该邮箱已被注册，请直接登录。";
+          break;
+        case "auth/weak-password":
+          message = "密码太弱，请至少使用 6 位字符。";
+          break;
+        case "auth/invalid-email":
+          message = "邮箱格式不正确。";
+          break;
+        case "auth/operation-not-allowed":
+          message = "邮箱登录未在 Firebase 控制台启用，请联系管理员。";
+          break;
+        case "auth/too-many-requests":
+          message = "尝试次数过多，账号已暂时锁定，请稍后再试。";
+          break;
+        default:
+          message = `认证失败: ${err.code || "未知错误"}`;
+      }
+      setError(message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="min-h-[calc(100vh-64px)] flex flex-col items-center justify-center p-4">
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="max-w-md w-full space-y-8"
+      >
+        <div className="text-center space-y-4">
+          <h1 className="text-5xl font-bold tracking-tight text-zinc-900 dark:text-zinc-100 pt-8">
+            wzjself API
+          </h1>
+          <p className="text-zinc-500 text-lg">
+            {isLogin ? "欢迎回来，请登录您的账号" : "创建一个新账号以开始使用"}
+          </p>
+        </div>
+
+        <div className="p-8 rounded-3xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/50 shadow-xl space-y-6">
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-zinc-500 uppercase tracking-wider flex items-center gap-2">
+                <Mail className="w-3 h-3" /> 邮箱地址
+              </label>
+              <input
+                type="email"
+                required
+                className="w-full px-4 py-3 text-sm rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 focus:outline-none focus:ring-2 focus:ring-zinc-500 transition-all"
+                placeholder="name@example.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-zinc-500 uppercase tracking-wider flex items-center gap-2">
+                <Lock className="w-3 h-3" /> 密码
+              </label>
+              <input
+                type="password"
+                required
+                className="w-full px-4 py-3 text-sm rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 focus:outline-none focus:ring-2 focus:ring-zinc-500 transition-all"
+                placeholder="••••••••"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+            </div>
+
+            <AnimatePresence>
+              {error && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: "auto" }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="p-3 rounded-xl bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-400 text-xs flex items-center gap-2"
+                >
+                  <AlertCircle className="w-4 h-4" />
+                  {error}
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full py-4 text-base font-semibold text-white bg-zinc-900 dark:bg-zinc-100 dark:text-zinc-900 rounded-2xl hover:opacity-90 transition-all shadow-xl shadow-zinc-200 dark:shadow-none flex items-center justify-center gap-3"
+            >
+              {loading ? (
+                <Loader2 className="w-5 h-5 animate-spin" />
+              ) : isLogin ? (
+                <>
+                  <LogIn className="w-5 h-5" /> 立即登录
+                </>
+              ) : (
+                <>
+                  <UserPlus className="w-5 h-5" /> 注册账号
+                </>
+              )}
+            </button>
+          </form>
+
+          <div className="pt-4 text-center">
+            <button
+              onClick={() => setIsLogin(!isLogin)}
+              className="text-sm text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors"
+            >
+              {isLogin ? "还没有账号？ 点击注册" : "已有账号？ 点击登录"}
+            </button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4 text-left opacity-50">
+          {[
+            { icon: Key, title: "多密钥管理", desc: "灵活创建与撤销" },
+            { icon: BarChart3, title: "实时统计", desc: "按小时/天监控" },
+            { icon: Zap, title: "弹性额度", desc: "天卡/月卡/永久" },
+            { icon: Globe, title: "标准兼容", desc: "OpenAI 接口格式" },
+          ].map((feature, i) => (
+            <div key={i} className="p-4 rounded-2xl border border-zinc-100 dark:border-zinc-900 bg-white dark:bg-zinc-950/50 space-y-1">
+              <feature.icon className="w-5 h-5 text-zinc-400 mb-2" />
+              <div className="font-semibold text-sm">{feature.title}</div>
+              <div className="text-xs text-zinc-500">{feature.desc}</div>
+            </div>
+          ))}
+        </div>
+      </motion.div>
+    </div>
+  );
+};
