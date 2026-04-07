@@ -16,6 +16,7 @@ const APP_BASE_URL = process.env.APP_BASE_URL || '';
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'wzjself';
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'wzj147258';
 const ADMIN_INITIAL_BALANCE = Number(process.env.ADMIN_INITIAL_BALANCE || 1000000);
+const USER_INITIAL_BALANCE = Number(process.env.USER_INITIAL_BALANCE || 100000);
 
 const MYSQL_HOST = process.env.MYSQL_HOST || 'host.docker.internal';
 const MYSQL_PORT = Number(process.env.MYSQL_PORT || 3306);
@@ -385,8 +386,8 @@ app.post('/api/auth/register', async (req, res) => {
   const uid = randomId('user_');
   await query(
     `INSERT INTO users (uid, email, password_hash, role, balance, quota_type, daily_quota)
-     VALUES (:uid, :email, :password_hash, 'user', 0, 'none', 0)`,
-    { uid, email, password_hash: hashPassword(password) }
+     VALUES (:uid, :email, :password_hash, 'user', :balance, 'none', 0)`,
+    { uid, email, password_hash: hashPassword(password), balance: USER_INITIAL_BALANCE }
   );
   const user = await getUserByUid(uid);
   const token = signToken({ uid, exp: Date.now() + 30 * 24 * 3600 * 1000 });

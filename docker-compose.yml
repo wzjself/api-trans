@@ -12,6 +12,7 @@ services:
       ADMIN_EMAIL: wzjself
       ADMIN_PASSWORD: wzj147258
       ADMIN_INITIAL_BALANCE: 1000000
+      USER_INITIAL_BALANCE: 100000
       TOKEN_SECRET: change-this-secret
       MYSQL_HOST: host.docker.internal
       MYSQL_PORT: 3306
