@@ -543,7 +543,7 @@ app.post('/api/users/me/api-keys', authMiddleware, async (req, res) => {
 });
 
 app.delete('/api/api-keys/:id', authMiddleware, async (req, res) => {
-  await query('UPDATE api_keys SET status = \"revoked\" WHERE id = :id AND uid = :uid', { id: req.params.id, uid: req.user.uid });
+  await query('DELETE FROM api_keys WHERE id = :id AND uid = :uid', { id: req.params.id, uid: req.user.uid });
   res.json({ ok: true });
 });
 

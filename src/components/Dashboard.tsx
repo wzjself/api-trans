@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { ApiKeyManager } from "./ApiKeyManager";
 import { UsageChart } from "./UsageChart";
 import { Redemption } from "./Redemption";
-import { Globe, Terminal, Zap, Info, Copy, Check, Activity, Clock } from "lucide-react";
+import { Globe, Terminal, Zap, Info, Copy, Check, Activity, Clock, RefreshCw, Wallet } from "lucide-react";
 import { motion } from "motion/react";
 import { format } from "date-fns";
 
@@ -63,6 +63,8 @@ const RecentUsageTable: React.FC = () => {
 export const Dashboard: React.FC = () => {
   const { profile, refreshProfile } = useAuth();
   const [guideLink, setGuideLink] = useState("");
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
 
   useEffect(() => {
     const unsub = dataService.subscribeSettings((data) => {
@@ -73,7 +75,7 @@ export const Dashboard: React.FC = () => {
 
   useEffect(() => {
     const timer = window.setInterval(() => {
-      refreshProfile();
+      refreshProfile().then(() => setLastSyncedAt(new Date()));
     }, 10000);
     return () => window.clearInterval(timer);
   }, [refreshProfile]);
@@ -113,17 +115,33 @@ export const Dashboard: React.FC = () => {
   const refreshData = async () => {
     if (!profile) return;
     try {
+      setIsRefreshing(true);
       await refreshProfile();
+      setLastSyncedAt(new Date());
     } catch (error) {
       console.error(error);
+    } finally {
+      setIsRefreshing(false);
     }
   };
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-12">
-      <header className="space-y-2">
-        <h1 className="text-3xl font-bold tracking-tight">欢迎回来</h1>
-        <p className="text-zinc-500">管理您的 API 密钥，查看使用统计并充值额度。</p>
+      <header className="space-y-4">
+        <div className="space-y-2">
+          <h1 className="text-3xl font-bold tracking-tight">欢迎回来</h1>
+          <p className="text-zinc-500">管理您的 API 密钥，查看使用统计并充值额度。</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-3 text-sm text-zinc-500">
+          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/50">
+            <Wallet className="w-4 h-4" />
+            当前余额：<span className="font-mono text-zinc-900 dark:text-zinc-100">{Number(profile?.balance || 0).toLocaleString()}</span>
+          </div>
+          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/50">
+            <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+            最近同步：<span className="font-mono text-zinc-900 dark:text-zinc-100">{lastSyncedAt ? format(lastSyncedAt, 'MM-dd HH:mm:ss') : '未同步'}</span>
+          </div>
+        </div>
       </header>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -157,10 +175,11 @@ export const Dashboard: React.FC = () => {
               <h2 className="text-xl font-semibold tracking-tight">使用统计</h2>
               <button
                 onClick={refreshData}
-                className="text-xs font-medium text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 flex items-center gap-1 transition-colors"
+                disabled={isRefreshing}
+                className="text-xs font-medium text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 flex items-center gap-1 transition-colors disabled:opacity-60"
               >
-                <Zap className="w-3 h-3" />
-                刷新
+                <RefreshCw className={`w-3 h-3 ${isRefreshing ? 'animate-spin' : ''}`} />
+                {isRefreshing ? '刷新中...' : '刷新数据'}
               </button>
             </div>
             <UsageChart />
