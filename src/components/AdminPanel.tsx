@@ -52,6 +52,7 @@ export const AdminPanel: React.FC = () => {
   const [providerModelsInput, setProviderModelsInput] = useState("");
   const [isSavingProvider, setIsSavingProvider] = useState(false);
   const [isFetchingModels, setIsFetchingModels] = useState(false);
+  const [platformSummary, setPlatformSummary] = useState({ totalUsers: 0, totalApiKeys: 0, totalRequests: 0, totalTokens: 0, todayTokens: 0 });
 
   const safeCopy = async (text: string) => {
     try {
@@ -85,11 +86,15 @@ export const AdminPanel: React.FC = () => {
       setProviders(data.providers || []);
       setDefaultModel(data.defaultModel || "");
     });
+    const unsubPlatformSummary = dataService.subscribePlatformSummary((data) => {
+      setPlatformSummary(data || { totalUsers: 0, totalApiKeys: 0, totalRequests: 0, totalTokens: 0, todayTokens: 0 });
+    });
     return () => {
       unsubUsers();
       unsubCodes();
       unsubSettings();
       unsubProviders();
+      unsubPlatformSummary();
     };
   };
 
@@ -191,6 +196,13 @@ export const AdminPanel: React.FC = () => {
 
   return (
     <div className="space-y-12 pb-20">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4">
+        <div className="p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/50"><div className="text-xs text-zinc-500">平台总用户</div><div className="text-2xl font-bold tracking-tight">{platformSummary.totalUsers.toLocaleString()}</div></div>
+        <div className="p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/50"><div className="text-xs text-zinc-500">活跃密钥</div><div className="text-2xl font-bold tracking-tight">{platformSummary.totalApiKeys.toLocaleString()}</div></div>
+        <div className="p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/50"><div className="text-xs text-zinc-500">总请求数</div><div className="text-2xl font-bold tracking-tight">{platformSummary.totalRequests.toLocaleString()}</div></div>
+        <div className="p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/50"><div className="text-xs text-zinc-500">平台总消耗</div><div className="text-2xl font-bold tracking-tight">{platformSummary.totalTokens.toLocaleString()}</div></div>
+        <div className="p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/50"><div className="text-xs text-zinc-500">今日消耗</div><div className="text-2xl font-bold tracking-tight">{platformSummary.todayTokens.toLocaleString()}</div></div>
+      </div>
       <div className="space-y-6">
         <div className="flex items-center gap-2 text-xl font-semibold tracking-tight">
           <Settings className="w-5 h-5 text-zinc-500" />

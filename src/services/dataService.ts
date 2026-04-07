@@ -1,5 +1,8 @@
 import { apiClient } from "./apiClient";
 
+const POLL_FAST = 10000;
+const POLL_MEDIUM = 15000;
+
 export const dataService = {
   subscribeApiKeys: (uid: string, callback: (keys: any[]) => void) => {
     let cancelled = false;
@@ -24,7 +27,7 @@ export const dataService = {
   subscribeLogs: (uid: string, callback: (logs: any[]) => void, limitCount?: number) => {
     let cancelled = false;
     const qs = limitCount ? `?limit=${limitCount}` : '';
-    apiClient.get(`/api/users/me/logs${qs}`).then((data: any[]) => {
+    const run = () => apiClient.get(`/api/users/me/logs${qs}`).then((data: any[]) => {
       if (cancelled) return;
       const formatted = data.map((l: any) => ({
         ...l,
@@ -32,7 +35,9 @@ export const dataService = {
       }));
       callback(formatted);
     }).catch(console.error);
-    return () => { cancelled = true; };
+    run();
+    const timer = window.setInterval(run, POLL_FAST);
+    return () => { cancelled = true; window.clearInterval(timer); };
   },
 
   addLog: async (_uid: string, tokens: number, model: string) => {
@@ -45,10 +50,12 @@ export const dataService = {
 
   subscribeAllUsers: (callback: (users: any[]) => void) => {
     let cancelled = false;
-    apiClient.get('/api/admin/users').then((data) => {
+    const run = () => apiClient.get('/api/admin/users').then((data) => {
       if (!cancelled) callback(data as any[]);
     }).catch(console.error);
-    return () => { cancelled = true; };
+    run();
+    const timer = window.setInterval(run, POLL_MEDIUM);
+    return () => { cancelled = true; window.clearInterval(timer); };
   },
 
   subscribeAllCodes: (callback: (codes: any[]) => void) => {
@@ -109,5 +116,15 @@ export const dataService = {
 
   saveDefaultModel: async (defaultModel: string) => {
     return apiClient.put('/api/admin/default-model', { defaultModel });
+  },
+
+  subscribePlatformSummary: (callback: (summary: any) => void) => {
+    let cancelled = false;
+    const run = () => apiClient.get('/api/admin/platform-summary').then((data) => {
+      if (!cancelled) callback(data);
+    }).catch(console.error);
+    run();
+    const timer = window.setInterval(run, POLL_MEDIUM);
+    return () => { cancelled = true; window.clearInterval(timer); };
   }
 };

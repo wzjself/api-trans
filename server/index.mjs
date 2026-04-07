@@ -555,6 +555,20 @@ app.get('/api/users/me/logs', authMiddleware, async (req, res) => {
   res.json(rows);
 });
 
+app.get('/api/admin/platform-summary', authMiddleware, adminMiddleware, async (_req, res) => {
+  const [userRow] = await query('SELECT COUNT(*) AS totalUsers FROM users');
+  const [keyRow] = await query('SELECT COUNT(*) AS totalApiKeys FROM api_keys WHERE status = \"active\"');
+  const [usageRow] = await query('SELECT COUNT(*) AS totalRequests, COALESCE(SUM(tokens),0) AS totalTokens FROM usage_logs');
+  const [todayRow] = await query('SELECT COALESCE(SUM(tokens),0) AS todayTokens FROM usage_logs WHERE DATE(created_at) = CURRENT_DATE()');
+  res.json({
+    totalUsers: Number(userRow?.totalUsers || 0),
+    totalApiKeys: Number(keyRow?.totalApiKeys || 0),
+    totalRequests: Number(usageRow?.totalRequests || 0),
+    totalTokens: Number(usageRow?.totalTokens || 0),
+    todayTokens: Number(todayRow?.todayTokens || 0),
+  });
+});
+
 app.post('/api/users/me/logs/simulate', authMiddleware, async (req, res) => {
   const { tokens = 1000, model = 'gpt-4-turbo' } = req.body || {};
   try {

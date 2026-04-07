@@ -71,6 +71,13 @@ export const Dashboard: React.FC = () => {
     return () => unsub();
   }, []);
 
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      refreshProfile();
+    }, 10000);
+    return () => window.clearInterval(timer);
+  }, [refreshProfile]);
+
   const [copiedUrl, setCopiedUrl] = useState(false);
 
   const safeCopy = async (text: string) => {
