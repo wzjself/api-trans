@@ -54,16 +54,6 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab }) => {
           </div>
 
           <div className="flex items-center gap-4">
-            {profile?.quotaType !== "none" && (
-              <div className="hidden sm:flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-900/30">
-                <span className="text-[10px] font-bold uppercase tracking-widest">
-                  {profile?.quotaType === "daily" ? "天卡" : "月卡"}
-                </span>
-                <span className="w-1 h-1 rounded-full bg-indigo-400" />
-                <span className="text-xs font-medium">每日 {profile?.dailyQuota.toLocaleString()} Tokens</span>
-              </div>
-            )}
-
             <button
               onClick={toggleTheme}
               className="p-2 text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded-lg transition-all"
