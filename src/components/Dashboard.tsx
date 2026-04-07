@@ -110,11 +110,10 @@ export const Dashboard: React.FC = () => {
     setTimeout(() => setCopiedUrl(false), 2000);
   };
 
-  const simulateUsage = async () => {
+  const refreshData = async () => {
     if (!profile) return;
     try {
-      await dataService.addLog(profile.uid, Math.floor(Math.random() * 5000) + 500, "gpt-4-turbo");
-      refreshProfile();
+      await refreshProfile();
     } catch (error) {
       console.error(error);
     }
@@ -157,11 +156,11 @@ export const Dashboard: React.FC = () => {
             <div className="flex items-center justify-between">
               <h2 className="text-xl font-semibold tracking-tight">使用统计</h2>
               <button
-                onClick={simulateUsage}
+                onClick={refreshData}
                 className="text-xs font-medium text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 flex items-center gap-1 transition-colors"
               >
                 <Zap className="w-3 h-3" />
-                模拟使用 (测试)
+                刷新
               </button>
             </div>
             <UsageChart />
