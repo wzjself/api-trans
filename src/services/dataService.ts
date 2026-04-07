@@ -78,6 +78,10 @@ export const dataService = {
     return apiClient.patch(`/api/admin/users/${uid}/balance`, { balance });
   },
 
+  deleteUser: async (uid: string) => {
+    return apiClient.delete(`/api/admin/users/${encodeURIComponent(uid)}`);
+  },
+
   subscribeSettings: (callback: (settings: any) => void) => {
     let cancelled = false;
     apiClient.get('/api/settings').then((data) => {

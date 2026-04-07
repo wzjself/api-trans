@@ -666,6 +666,14 @@ app.patch('/api/admin/users/:uid/balance', authMiddleware, adminMiddleware, asyn
   res.json(sanitizeUser(user));
 });
 
+app.delete('/api/admin/users/:uid', authMiddleware, adminMiddleware, async (req, res) => {
+  if (req.user.uid === req.params.uid) {
+    return res.status(400).json({ error: '不能删除当前登录管理员账号' });
+  }
+  await query('DELETE FROM users WHERE uid = :uid', { uid: req.params.uid });
+  res.json({ ok: true });
+});
+
 app.get('/api/admin/codes', authMiddleware, adminMiddleware, async (_req, res) => {
   const rows = await query('SELECT * FROM redemption_codes ORDER BY created_at DESC');
   res.json(rows.map((row) => ({
