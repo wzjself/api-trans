@@ -64,26 +64,29 @@ export const UsageChart: React.FC = () => {
   const stats = useMemo(() => {
     const totalTokens = logs.reduce((sum, log) => sum + log.tokens, 0);
     const totalCount = logs.length;
-    
-    let remainingQuota = profile?.balance || 0;
+    const permanentBalance = Number(profile?.balance || 0);
+
+    let remainingQuota = permanentBalance;
     let quotaLabel = "剩余额度";
+    let showPermanentBalance = false;
 
     if (profile?.quotaType && profile.quotaType !== "none") {
       const today = new Date();
       const todayUsage = logs
         .filter(log => isSameDay(log.timestamp, today))
         .reduce((sum, log) => sum + log.tokens, 0);
-      
-      remainingQuota = Math.max(0, profile.dailyQuota - todayUsage);
+
+      remainingQuota = Math.max(0, Number(profile.dailyQuota || 0) - todayUsage);
       quotaLabel = profile.quotaType === "daily" ? "今日剩余 (天卡)" : "今日剩余 (月卡)";
+      showPermanentBalance = permanentBalance > 0;
     }
 
-    return { totalTokens, totalCount, remainingQuota, quotaLabel };
+    return { totalTokens, totalCount, remainingQuota, quotaLabel, permanentBalance, showPermanentBalance };
   }, [logs, profile]);
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className={`grid grid-cols-1 ${stats.showPermanentBalance ? 'md:grid-cols-4' : 'md:grid-cols-3'} gap-4`}>
         <div className="p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/50 space-y-2">
           <div className="flex items-center gap-2 text-zinc-500 text-sm font-medium">
             <Zap className="w-4 h-4" />
@@ -111,6 +114,17 @@ export const UsageChart: React.FC = () => {
             {stats.remainingQuota.toLocaleString()} <span className="text-xs font-normal text-zinc-500">Tokens</span>
           </div>
         </div>
+        {stats.showPermanentBalance && (
+          <div className="p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/50 space-y-2">
+            <div className="flex items-center gap-2 text-zinc-500 text-sm font-medium">
+              <PieChart className="w-4 h-4" />
+              <span>永久额度</span>
+            </div>
+            <div className="text-2xl font-bold tracking-tight">
+              {stats.permanentBalance.toLocaleString()} <span className="text-xs font-normal text-zinc-500">Tokens</span>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="p-6 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/50 space-y-6">
