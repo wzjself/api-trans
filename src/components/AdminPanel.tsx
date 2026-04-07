@@ -39,7 +39,7 @@ interface ProviderConfig {
 export const AdminPanel: React.FC = () => {
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [codes, setCodes] = useState<RedemptionCode[]>([]);
-  const [newCode, setNewCode] = useState({ type: "permanent", value: 1000, durationDays: 30 });
+  const [newCode, setNewCode] = useState({ type: "permanent", value: 1000, durationDays: 0, count: 1 });
   const [isGenerating, setIsGenerating] = useState(false);
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
   const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
@@ -99,8 +99,14 @@ export const AdminPanel: React.FC = () => {
   };
 
   useEffect(() => loadAdminData(), []);
+  useEffect(() => {
+    setNewCode((prev) => {
+      if (prev.type === 'permanent') return { ...prev, value: prev.value || 1000, durationDays: 0 };
+      if (prev.type === 'daily') return { ...prev, value: 150000000, durationDays: 1 };
+      return { ...prev, value: 150000000, durationDays: 30 };
+    });
+  }, [newCode.type]);
 
-  const saveSettings = async () => {
     setIsSavingSettings(true);
     try {
       await dataService.updateSettings(settings);
@@ -112,21 +118,29 @@ export const AdminPanel: React.FC = () => {
   const generateCode = async () => {
     setIsGenerating(true);
     try {
-      const code = `NX-${Math.random().toString(36).substring(2, 10).toUpperCase()}`;
-      const created = await dataService.addCode({ code, type: newCode.type, value: newCode.value, durationDays: newCode.durationDays });
-      const normalized: RedemptionCode = {
-        code: created.code || code,
-        type: created.type || newCode.type,
-        value: Number(created.value ?? newCode.value),
-        durationDays: Number(created.durationDays ?? newCode.durationDays),
-        isUsed: Boolean(created.isUsed),
-        createdAt: created.createdAt || new Date().toISOString(),
-        usedBy: created.usedBy || null,
+      const request = {
+        type: newCode.type,
+        value: newCode.value,
+        durationDays: newCode.type === 'permanent' ? 0 : newCode.durationDays,
+        count: newCode.count,
       };
-      setCodes((prev) => [normalized, ...prev.filter((item) => item.code !== normalized.code)]);
-      const copied = await safeCopy(normalized.code);
-      setCopiedCode(copied ? normalized.code : null);
-      setTimeout(() => setCopiedCode(null), 2000);
+      const created = await dataService.addCode(request);
+      const items = Array.isArray(created?.items) ? created.items : [created];
+      const normalized = items.map((item: any) => ({
+        code: item.code,
+        type: item.type,
+        value: Number(item.value),
+        durationDays: Number(item.durationDays),
+        isUsed: Boolean(item.isUsed),
+        createdAt: item.createdAt || new Date().toISOString(),
+        usedBy: item.usedBy || null,
+      }));
+      setCodes((prev) => [...normalized, ...prev.filter((item) => !normalized.some((n: any) => n.code === item.code))]);
+      if (normalized.length === 1) {
+        const copied = await safeCopy(normalized[0].code);
+        setCopiedCode(copied ? normalized[0].code : null);
+        setTimeout(() => setCopiedCode(null), 2000);
+      }
     } finally {
       setIsGenerating(false);
     }
@@ -275,9 +289,10 @@ export const AdminPanel: React.FC = () => {
         </div>
         <div className="p-6 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/50 flex flex-wrap gap-4 items-end">
           <div className="space-y-1.5"><label className="text-xs font-medium text-zinc-500 uppercase tracking-wider">类型</label><select className="w-full px-3 py-2 text-sm rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900" value={newCode.type} onChange={(e) => setNewCode({ ...newCode, type: e.target.value as any })}><option value="permanent">额度直冲 (永久)</option><option value="daily">天卡</option><option value="monthly">月卡</option></select></div>
-          <div className="space-y-1.5"><label className="text-xs font-medium text-zinc-500 uppercase tracking-wider">额度</label><input type="number" className="w-full px-3 py-2 text-sm rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900" value={newCode.value} onChange={(e) => setNewCode({ ...newCode, value: parseInt(e.target.value || '0') })} /></div>
+          <div className="space-y-1.5"><label className="text-xs font-medium text-zinc-500 uppercase tracking-wider">{newCode.type === 'permanent' ? '额度' : '每日额度'}</label><input type="number" className="w-full px-3 py-2 text-sm rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900" value={newCode.value} onChange={(e) => setNewCode({ ...newCode, value: parseInt(e.target.value || '0') })} /></div>
           {newCode.type !== "permanent" && <div className="space-y-1.5"><label className="text-xs font-medium text-zinc-500 uppercase tracking-wider">持续天数</label><input type="number" className="w-full px-3 py-2 text-sm rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900" value={newCode.durationDays} onChange={(e) => setNewCode({ ...newCode, durationDays: parseInt(e.target.value || '0') })} /></div>}
-          <button onClick={generateCode} disabled={isGenerating} className="px-6 py-2 text-sm font-medium text-white bg-zinc-900 dark:bg-zinc-100 dark:text-zinc-900 rounded-xl">{isGenerating ? '生成中...' : '生成兑换码'}</button>
+          <div className="space-y-1.5"><label className="text-xs font-medium text-zinc-500 uppercase tracking-wider">批量数量</label><input type="number" min="1" max="200" className="w-full px-3 py-2 text-sm rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900" value={newCode.count} onChange={(e) => setNewCode({ ...newCode, count: Math.max(1, Math.min(200, parseInt(e.target.value || '1'))) })} /></div>
+          <button onClick={generateCode} disabled={isGenerating} className="px-6 py-2 text-sm font-medium text-white bg-zinc-900 dark:bg-zinc-100 dark:text-zinc-900 rounded-xl">{isGenerating ? '生成中...' : `生成${newCode.count > 1 ? '兑换码' : '兑换码'}`}</button>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           <AnimatePresence mode="popLayout">

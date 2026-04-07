@@ -659,18 +659,33 @@ app.get('/api/admin/codes', authMiddleware, adminMiddleware, async (_req, res) =
 
 app.post('/api/admin/codes', authMiddleware, adminMiddleware, async (req, res) => {
   const body = req.body || {};
-  const code = body.code || `NX-${Math.random().toString(36).slice(2, 10).toUpperCase()}`;
-  await query(
-    `INSERT INTO redemption_codes (code, type, value, duration_days, is_used)
-     VALUES (:code, :type, :value, :duration_days, 0)`,
-    {
-      code,
-      type: body.type || 'permanent',
-      value: Number(body.value || 0),
-      duration_days: Number(body.durationDays || 30),
-    }
-  );
-  res.json({ code, type: body.type || 'permanent', value: Number(body.value || 0), durationDays: Number(body.durationDays || 30), isUsed: false, createdAt: nowIso() });
+  const count = Math.max(1, Math.min(200, Number(body.count || 1)));
+  const type = body.type || 'permanent';
+  const defaultValue = type === 'permanent' ? 1000 : 150000000;
+  const defaultDuration = type === 'daily' ? 1 : type === 'monthly' ? 30 : 0;
+  const value = Number(body.value ?? defaultValue);
+  const durationDays = Number(body.durationDays ?? defaultDuration);
+  const createdAt = nowIso();
+  const created = [];
+
+  for (let i = 0; i < count; i++) {
+    const code = count === 1 && body.code
+      ? body.code
+      : `NX-${Math.random().toString(36).slice(2, 10).toUpperCase()}`;
+    await query(
+      `INSERT INTO redemption_codes (code, type, value, duration_days, is_used)
+       VALUES (:code, :type, :value, :duration_days, 0)`,
+      {
+        code,
+        type,
+        value,
+        duration_days: durationDays,
+      }
+    );
+    created.push({ code, type, value, durationDays, isUsed: false, createdAt });
+  }
+
+  res.json(count === 1 ? created[0] : { items: created, count: created.length });
 });
 
 app.delete('/api/admin/codes/:code', authMiddleware, adminMiddleware, async (req, res) => {
