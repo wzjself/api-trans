@@ -19,6 +19,30 @@ export const ApiKeyManager: React.FC = () => {
   const [isCreating, setIsCreating] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
+  const safeCopy = async (text: string) => {
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+        return true;
+      }
+    } catch {}
+
+    try {
+      const textarea = document.createElement("textarea");
+      textarea.value = text;
+      textarea.style.position = "fixed";
+      textarea.style.opacity = "0";
+      document.body.appendChild(textarea);
+      textarea.focus();
+      textarea.select();
+      const ok = document.execCommand("copy");
+      document.body.removeChild(textarea);
+      return ok;
+    } catch {
+      return false;
+    }
+  };
+
   useEffect(() => {
     if (!profile) return;
     const unsubscribe = dataService.subscribeApiKeys(profile.uid, (data) => {
@@ -31,8 +55,21 @@ export const ApiKeyManager: React.FC = () => {
     if (!profile || !newKeyName.trim()) return;
     setIsCreating(true);
     try {
-      await dataService.addApiKey(profile.uid, newKeyName);
+      const created = await dataService.addApiKey(profile.uid, newKeyName.trim());
+      const normalized: ApiKey = {
+        id: created.id,
+        name: created.name,
+        key: created.key,
+        createdAt: created.createdAt || new Date().toISOString(),
+        status: created.status || "active",
+      };
+      setKeys((prev) => [normalized, ...prev.filter((item) => item.id !== normalized.id)]);
       setNewKeyName("");
+      const copied = await safeCopy(normalized.key);
+      if (copied) {
+        setCopiedId(normalized.id);
+        setTimeout(() => setCopiedId(null), 2000);
+      }
     } catch (error) {
       console.error(error);
     } finally {
@@ -43,13 +80,15 @@ export const ApiKeyManager: React.FC = () => {
   const deleteKey = async (id: string) => {
     try {
       await dataService.revokeApiKey(id);
+      setKeys((prev) => prev.map((item) => item.id === id ? { ...item, status: "revoked" } : item));
     } catch (error) {
       console.error(error);
     }
   };
 
-  const copyToClipboard = (text: string, id: string) => {
-    navigator.clipboard.writeText(text);
+  const copyToClipboard = async (text: string, id: string) => {
+    const copied = await safeCopy(text);
+    if (!copied) return;
     setCopiedId(id);
     setTimeout(() => setCopiedId(null), 2000);
   };
@@ -72,7 +111,7 @@ export const ApiKeyManager: React.FC = () => {
             className="flex items-center gap-2 px-4 py-1.5 text-sm font-medium text-white bg-zinc-900 dark:bg-zinc-100 dark:text-zinc-900 rounded-lg hover:opacity-90 disabled:opacity-50 transition-all"
           >
             <Plus className="w-4 h-4" />
-            新建密钥
+            {isCreating ? "生成中..." : "新建密钥"}
           </button>
         </div>
       </div>
@@ -98,6 +137,7 @@ export const ApiKeyManager: React.FC = () => {
                 <div className="flex items-center gap-2 font-mono text-xs text-zinc-500">
                   <span>{key.key}</span>
                   <button
+                    type="button"
                     onClick={() => copyToClipboard(key.key, key.id)}
                     className="p-1 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors"
                   >
@@ -106,6 +146,7 @@ export const ApiKeyManager: React.FC = () => {
                 </div>
               </div>
               <button
+                type="button"
                 onClick={() => deleteKey(key.id)}
                 className="p-2 text-zinc-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"
               >
