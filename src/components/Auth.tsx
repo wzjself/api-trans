@@ -95,13 +95,13 @@ export const Auth: React.FC = () => {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-1.5">
               <label className="text-xs font-medium text-zinc-500 uppercase tracking-wider flex items-center gap-2">
-                <Mail className="w-3 h-3" /> 邮箱地址
+                <Mail className="w-3 h-3" /> 账号
               </label>
               <input
-                type="email"
+                type="text"
                 required
                 className="w-full px-4 py-3 text-sm rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 focus:outline-none focus:ring-2 focus:ring-zinc-500 transition-all"
-                placeholder="name@example.com"
+                placeholder="请输入账号"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
               />
