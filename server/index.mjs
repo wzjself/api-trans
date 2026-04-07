@@ -174,6 +174,16 @@ async function getProviderRouting(modelHint = '') {
   return { provider: matched || providers[0], model: requestedModel, providers };
 }
 
+async function ensureColumn(tableName, columnName, alterSql) {
+  const rows = await query(
+    `SELECT COUNT(*) AS count FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = :schema AND TABLE_NAME = :table AND COLUMN_NAME = :column`,
+    { schema: MYSQL_DATABASE, table: tableName, column: columnName }
+  );
+  if (Number(rows[0]?.count || 0) === 0) {
+    await query(alterSql);
+  }
+}
+
 async function ensureSchema() {
   await query(`CREATE TABLE IF NOT EXISTS users (
     id BIGINT PRIMARY KEY AUTO_INCREMENT,
@@ -261,8 +271,8 @@ async function ensureSchema() {
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`);
 
-  await query('ALTER TABLE users ADD COLUMN IF NOT EXISTS used_quota BIGINT NOT NULL DEFAULT 0');
-  await query('ALTER TABLE users ADD COLUMN IF NOT EXISTS request_count BIGINT NOT NULL DEFAULT 0');
+  await ensureColumn('users', 'used_quota', 'ALTER TABLE users ADD COLUMN used_quota BIGINT NOT NULL DEFAULT 0');
+  await ensureColumn('users', 'request_count', 'ALTER TABLE users ADD COLUMN request_count BIGINT NOT NULL DEFAULT 0');
 
   const admin = await getUserByEmail(ADMIN_EMAIL);
   const adminHash = hashPassword(ADMIN_PASSWORD);
@@ -904,9 +914,9 @@ app.all(/^\/v1\/(.+)/, async (req, res) => {
     if (response.ok && contentType.includes('application/json')) {
       try {
         const json = JSON.parse(text);
-        const promptTokens = Number(json?.usage?.prompt_tokens || 0);
-        const completionTokens = Number(json?.usage?.completion_tokens || 0);
-        const tokens = Number(json?.usage?.total_tokens || 0);
+        const promptTokens = Number(json?.usage?.prompt_tokens ?? json?.usage?.input_tokens ?? 0);
+        const completionTokens = Number(json?.usage?.completion_tokens ?? json?.usage?.output_tokens ?? 0);
+        const tokens = Number(json?.usage?.total_tokens ?? (promptTokens + completionTokens) ?? 0);
         if (tokens > 0) {
           await chargeUser(
             user,
