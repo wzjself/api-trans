@@ -40,6 +40,17 @@ export const dataService = {
     return () => { cancelled = true; window.clearInterval(timer); };
   },
 
+  subscribeConsumeLogs: (callback: (logs: any[]) => void, limitCount?: number) => {
+    let cancelled = false;
+    const qs = limitCount ? `?limit=${limitCount}` : '';
+    const run = () => apiClient.get(`/api/users/me/consume-logs${qs}`).then((data: any[]) => {
+      if (!cancelled) callback(data);
+    }).catch(console.error);
+    run();
+    const timer = window.setInterval(run, POLL_FAST);
+    return () => { cancelled = true; window.clearInterval(timer); };
+  },
+
   addLog: async (_uid: string, tokens: number, model: string) => {
     return apiClient.post('/api/users/me/logs/simulate', { tokens, model });
   },

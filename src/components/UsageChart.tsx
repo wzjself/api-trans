@@ -62,8 +62,8 @@ export const UsageChart: React.FC = () => {
   }, [logs, view]);
 
   const stats = useMemo(() => {
-    const totalTokens = logs.reduce((sum, log) => sum + log.tokens, 0);
-    const totalCount = logs.length;
+    const totalTokens = Number(profile?.usedQuota || 0);
+    const totalCount = Number(profile?.requestCount || logs.length || 0);
     const permanentBalance = Number(profile?.balance || 0);
 
     let remainingQuota = permanentBalance;

@@ -9,6 +9,8 @@ interface UserProfile {
   email: string;
   role: "admin" | "user";
   balance: number;
+  usedQuota?: number;
+  requestCount?: number;
   quotaType: "none" | "daily" | "monthly";
   dailyQuota: number;
   quotaExpiresAt: any;

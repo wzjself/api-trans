@@ -81,6 +81,8 @@ function sanitizeUser(user) {
     email: rest.email,
     role: rest.role,
     balance: Number(rest.balance || 0),
+    usedQuota: Number(rest.used_quota || 0),
+    requestCount: Number(rest.request_count || 0),
     quotaType: rest.quota_type || 'none',
     dailyQuota: Number(rest.daily_quota || 0),
     quotaExpiresAt: rest.quota_expires_at,
@@ -180,6 +182,8 @@ async function ensureSchema() {
     password_hash TEXT NOT NULL,
     role ENUM('admin','user') NOT NULL DEFAULT 'user',
     balance BIGINT NOT NULL DEFAULT 0,
+    used_quota BIGINT NOT NULL DEFAULT 0,
+    request_count BIGINT NOT NULL DEFAULT 0,
     quota_type ENUM('none','daily','monthly','permanent') NOT NULL DEFAULT 'none',
     daily_quota BIGINT NOT NULL DEFAULT 0,
     quota_expires_at DATETIME NULL,
@@ -210,6 +214,25 @@ async function ensureSchema() {
     CONSTRAINT fk_usage_user FOREIGN KEY (uid) REFERENCES users(uid) ON DELETE CASCADE
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`);
 
+  await query(`CREATE TABLE IF NOT EXISTS consume_logs (
+    id VARCHAR(64) PRIMARY KEY,
+    uid VARCHAR(64) NOT NULL,
+    api_key_id VARCHAR(64) NULL,
+    provider_id VARCHAR(64) NULL,
+    model VARCHAR(191) NULL,
+    request_path VARCHAR(191) NULL,
+    prompt_tokens BIGINT NOT NULL DEFAULT 0,
+    completion_tokens BIGINT NOT NULL DEFAULT 0,
+    total_tokens BIGINT NOT NULL DEFAULT 0,
+    consumed_quota BIGINT NOT NULL DEFAULT 0,
+    status_code INT NOT NULL DEFAULT 0,
+    success TINYINT(1) NOT NULL DEFAULT 0,
+    error_message TEXT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_consume_uid_created (uid, created_at),
+    CONSTRAINT fk_consume_user FOREIGN KEY (uid) REFERENCES users(uid) ON DELETE CASCADE
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`);
+
   await query(`CREATE TABLE IF NOT EXISTS redemption_codes (
     code VARCHAR(64) PRIMARY KEY,
     type ENUM('permanent','daily','monthly') NOT NULL,
@@ -237,6 +260,9 @@ async function ensureSchema() {
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`);
+
+  await query('ALTER TABLE users ADD COLUMN IF NOT EXISTS used_quota BIGINT NOT NULL DEFAULT 0');
+  await query('ALTER TABLE users ADD COLUMN IF NOT EXISTS request_count BIGINT NOT NULL DEFAULT 0');
 
   const admin = await getUserByEmail(ADMIN_EMAIL);
   const adminHash = hashPassword(ADMIN_PASSWORD);
@@ -326,7 +352,7 @@ async function getQuotaStatus(user) {
   return { type: 'permanent', remaining: Math.max(0, Number(user.balance || 0)) };
 }
 
-async function chargeUser(user, tokens, model = 'unknown', providerId = null, requestPath = null) {
+async function chargeUser(user, tokens, model = 'unknown', providerId = null, requestPath = null, promptTokens = 0, completionTokens = 0, apiKeyId = null, statusCode = 200, success = 1, errorMessage = null) {
   const amount = Math.max(0, Number(tokens || 0));
   const quota = await getQuotaStatus(user);
   if (quota.remaining < amount) {
@@ -334,7 +360,12 @@ async function chargeUser(user, tokens, model = 'unknown', providerId = null, re
   }
   if (!(quota.type === 'daily' || quota.type === 'monthly')) {
     await query(
-      'UPDATE users SET balance = GREATEST(balance - :amount, 0) WHERE uid = :uid',
+      'UPDATE users SET balance = GREATEST(balance - :amount, 0), used_quota = used_quota + :amount, request_count = request_count + 1 WHERE uid = :uid',
+      { amount, uid: user.uid }
+    );
+  } else {
+    await query(
+      'UPDATE users SET used_quota = used_quota + :amount, request_count = request_count + 1 WHERE uid = :uid',
       { amount, uid: user.uid }
     );
   }
@@ -348,6 +379,47 @@ async function chargeUser(user, tokens, model = 'unknown', providerId = null, re
       provider_id: providerId,
       tokens: amount,
       request_path: requestPath,
+    }
+  );
+  await query(
+    `INSERT INTO consume_logs (id, uid, api_key_id, provider_id, model, request_path, prompt_tokens, completion_tokens, total_tokens, consumed_quota, status_code, success, error_message)
+     VALUES (:id, :uid, :api_key_id, :provider_id, :model, :request_path, :prompt_tokens, :completion_tokens, :total_tokens, :consumed_quota, :status_code, :success, :error_message)`,
+    {
+      id: randomId('consume_'),
+      uid: user.uid,
+      api_key_id: apiKeyId,
+      provider_id: providerId,
+      model,
+      request_path: requestPath,
+      prompt_tokens: Number(promptTokens || 0),
+      completion_tokens: Number(completionTokens || 0),
+      total_tokens: amount,
+      consumed_quota: amount,
+      status_code: Number(statusCode || 0),
+      success: success ? 1 : 0,
+      error_message: errorMessage,
+    }
+  );
+}
+
+async function recordRequestOnly(user, apiKeyId, providerId, model, requestPath, statusCode = 0, success = 0, errorMessage = null) {
+  await query(
+    'UPDATE users SET request_count = request_count + 1 WHERE uid = :uid',
+    { uid: user.uid }
+  );
+  await query(
+    `INSERT INTO consume_logs (id, uid, api_key_id, provider_id, model, request_path, prompt_tokens, completion_tokens, total_tokens, consumed_quota, status_code, success, error_message)
+     VALUES (:id, :uid, :api_key_id, :provider_id, :model, :request_path, 0, 0, 0, 0, :status_code, :success, :error_message)`,
+    {
+      id: randomId('consume_'),
+      uid: user.uid,
+      api_key_id: apiKeyId,
+      provider_id: providerId,
+      model,
+      request_path: requestPath,
+      status_code: Number(statusCode || 0),
+      success: success ? 1 : 0,
+      error_message: errorMessage,
     }
   );
 }
@@ -551,6 +623,16 @@ app.get('/api/users/me/logs', authMiddleware, async (req, res) => {
   const limit = Number(req.query.limit || 50);
   const rows = await query(
     `SELECT id, model, tokens, created_at AS timestamp FROM usage_logs WHERE uid = :uid ORDER BY created_at DESC LIMIT ${Math.min(limit, 500)}`,
+    { uid: req.user.uid }
+  );
+  res.json(rows);
+});
+
+app.get('/api/users/me/consume-logs', authMiddleware, async (req, res) => {
+  const limit = Number(req.query.limit || 50);
+  const rows = await query(
+    `SELECT id, model, request_path AS requestPath, prompt_tokens AS promptTokens, completion_tokens AS completionTokens, total_tokens AS totalTokens, consumed_quota AS consumedQuota, status_code AS statusCode, success, error_message AS errorMessage, created_at AS createdAt
+     FROM consume_logs WHERE uid = :uid ORDER BY created_at DESC LIMIT ${Math.min(limit, 500)}`,
     { uid: req.user.uid }
   );
   res.json(rows);
@@ -789,11 +871,17 @@ app.all(/^\/v1\/(.+)/, async (req, res) => {
   const routing = await getProviderRouting(req.body?.model || '');
   const provider = routing.provider;
   const activeModel = routing.model;
-  if (!provider?.base_url) return res.status(503).json({ error: 'No enabled upstream provider configured' });
+  if (!provider?.base_url) {
+    await recordRequestOnly(found, found.id, null, req.body?.model || activeModel || 'unknown', `/v1/${req.params[0] || ''}`, 503, 0, 'No enabled upstream provider configured');
+    return res.status(503).json({ error: 'No enabled upstream provider configured' });
+  }
 
   const user = await getUserByUid(found.uid);
   const quota = await getQuotaStatus(user);
-  if (quota.remaining <= 0) return res.status(402).json({ error: 'Quota exhausted' });
+  if (quota.remaining <= 0) {
+    await recordRequestOnly(user, found.id, provider.id, req.body?.model || activeModel || 'unknown', `/v1/${req.params[0] || ''}`, 402, 0, 'Quota exhausted');
+    return res.status(402).json({ error: 'Quota exhausted' });
+  }
 
   const proxyPath = req.params[0] || '';
   const target = `${String(provider.base_url).replace(/\/$/, '')}/${proxyPath}`;
@@ -812,20 +900,50 @@ app.all(/^\/v1\/(.+)/, async (req, res) => {
     const contentType = response.headers.get('content-type') || 'application/json';
     const text = await response.text();
 
+    let usageRecorded = false;
     if (response.ok && contentType.includes('application/json')) {
       try {
         const json = JSON.parse(text);
+        const promptTokens = Number(json?.usage?.prompt_tokens || 0);
+        const completionTokens = Number(json?.usage?.completion_tokens || 0);
         const tokens = Number(json?.usage?.total_tokens || 0);
         if (tokens > 0) {
-          await chargeUser(user, tokens, json?.model || body?.model || activeModel || 'unknown', provider.id, `/v1/${proxyPath}`);
+          await chargeUser(
+            user,
+            tokens,
+            json?.model || body?.model || activeModel || 'unknown',
+            provider.id,
+            `/v1/${proxyPath}`,
+            promptTokens,
+            completionTokens,
+            found.id,
+            response.status,
+            1,
+            null
+          );
+          usageRecorded = true;
         }
       } catch {
         // ignore usage parse failures
       }
     }
 
+    if (!usageRecorded) {
+      await recordRequestOnly(
+        user,
+        found.id,
+        provider.id,
+        body?.model || activeModel || 'unknown',
+        `/v1/${proxyPath}`,
+        response.status,
+        response.ok ? 1 : 0,
+        response.ok ? null : text.slice(0, 500)
+      );
+    }
+
     res.status(response.status).type(contentType).send(text);
   } catch (error) {
+    await recordRequestOnly(user, found.id, provider.id, body?.model || activeModel || 'unknown', `/v1/${proxyPath}`, 502, 0, String(error));
     res.status(502).json({ error: 'Proxy failed', detail: String(error) });
   }
 });
