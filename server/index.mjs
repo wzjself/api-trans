@@ -88,6 +88,31 @@ function sanitizeUser(user) {
   };
 }
 
+function parseModelsJson(value) {
+  if (!value) return [];
+  if (Array.isArray(value)) return value.filter(Boolean);
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed.filter(Boolean) : [];
+    } catch {
+      return value.split(/[\n,]/).map((s) => s.trim()).filter(Boolean);
+    }
+  }
+  if (typeof value === 'object') {
+    if (Buffer.isBuffer(value)) {
+      try {
+        const parsed = JSON.parse(value.toString('utf8'));
+        return Array.isArray(parsed) ? parsed.filter(Boolean) : [];
+      } catch {
+        return [];
+      }
+    }
+    return Array.isArray(value) ? value.filter(Boolean) : [];
+  }
+  return [];
+}
+
 async function query(sql, params = {}) {
   const [rows] = await pool.execute(sql, params);
   return rows;
@@ -139,12 +164,8 @@ async function getProviderRouting(modelHint = '') {
   }
 
   const matched = providers.find((row) => {
-    try {
-      const models = JSON.parse(row.models_json || '[]');
-      return Array.isArray(models) && models.includes(requestedModel);
-    } catch {
-      return false;
-    }
+    const models = parseModelsJson(row.models_json);
+    return models.includes(requestedModel);
   });
 
   return { provider: matched || providers[0], model: requestedModel, providers };
@@ -409,7 +430,7 @@ app.get('/api/admin/providers', authMiddleware, adminMiddleware, async (_req, re
       baseUrl: row.base_url,
       apiKey: row.api_key,
       enabled: Boolean(row.enabled),
-      models: (() => { try { return JSON.parse(row.models_json || '[]'); } catch { return []; } })(),
+      models: parseModelsJson(row.models_json),
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     })),
@@ -472,7 +493,7 @@ app.post('/api/admin/providers', authMiddleware, adminMiddleware, async (req, re
     baseUrl: row.base_url,
     apiKey: row.api_key,
     enabled: Boolean(row.enabled),
-    models: (() => { try { return JSON.parse(row.models_json || '[]'); } catch { return []; } })(),
+    models: parseModelsJson(row.models_json),
   });
 });
 
@@ -649,13 +670,7 @@ app.get('/v1/models', async (_req, res) => {
     return res.json({ object: 'list', data: [{ id: 'unconfigured', object: 'model', owned_by: 'local' }] });
   }
 
-  const localModels = (() => {
-    try {
-      return JSON.parse(provider.models_json || '[]');
-    } catch {
-      return [];
-    }
-  })();
+  const localModels = parseModelsJson(provider.models_json);
 
   if (localModels.length > 0) {
     return res.json({ object: 'list', data: localModels.map((m) => ({ id: m, object: 'model', owned_by: provider.name })) });
