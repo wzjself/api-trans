@@ -107,6 +107,7 @@ export const AdminPanel: React.FC = () => {
     });
   }, [newCode.type]);
 
+  const saveSettings = async () => {
     setIsSavingSettings(true);
     try {
       await dataService.updateSettings(settings);
