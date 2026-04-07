@@ -1,8 +1,6 @@
 import React from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { useTheme } from "../contexts/ThemeContext";
-import { auth, googleProvider } from "../firebase";
-import { signInWithPopup, signOut } from "firebase/auth";
 import { LogOut, Sun, Moon, LayoutDashboard, ShieldCheck, User as UserIcon } from "lucide-react";
 import { cn } from "../lib/utils";
 

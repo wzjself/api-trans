@@ -1,14 +1,8 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
-import { auth, db, FirebaseUser, handleFirestoreError, OperationType } from "../firebase";
-import { onAuthStateChanged, signOut } from "firebase/auth";
-import { doc, onSnapshot, setDoc, serverTimestamp } from "firebase/firestore";
-import { storageService, LocalUser } from "../services/storageService";
+import { FirebaseUser } from "../firebase";
 import { apiClient, getAuthToken, setAuthToken } from "../services/apiClient";
 
-// ==========================================
-// 开关：是否启用 Firebase (默认关闭)
-// ==========================================
-export const USE_FIREBASE = false; 
+export const USE_FIREBASE = false;
 
 interface UserProfile {
   uid: string;
@@ -22,7 +16,7 @@ interface UserProfile {
 }
 
 interface AuthContextType {
-  user: FirebaseUser | LocalUser | null;
+  user: FirebaseUser | null;
   profile: UserProfile | null;
   loading: boolean;
   isAdmin: boolean;
@@ -40,7 +34,7 @@ const AuthContext = createContext<AuthContextType>({
 });
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<FirebaseUser | LocalUser | null>(null);
+  const [user, setUser] = useState<FirebaseUser | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -65,52 +59,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   useEffect(() => {
-    if (USE_FIREBASE) {
-      const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-        setUser(firebaseUser);
-        if (firebaseUser) {
-          const userDocRef = doc(db, "users", firebaseUser.uid);
-          const unsubProfile = onSnapshot(userDocRef, (docSnap) => {
-            if (docSnap.exists()) {
-              setProfile(docSnap.data() as UserProfile);
-            } else {
-              const newProfile: UserProfile = {
-                uid: firebaseUser.uid,
-                email: firebaseUser.email || "",
-                role: firebaseUser.email === "wzjself@gmail.com" ? "admin" : "user",
-                balance: 0,
-                quotaType: "none",
-                dailyQuota: 0,
-                quotaExpiresAt: null,
-                createdAt: serverTimestamp(),
-              };
-              setDoc(userDocRef, newProfile).catch(e => handleFirestoreError(e, OperationType.WRITE, `users/${firebaseUser.uid}`));
-            }
-            setLoading(false);
-          }, (error) => {
-            handleFirestoreError(error, OperationType.GET, `users/${firebaseUser.uid}`);
-            setLoading(false);
-          });
-          return () => unsubProfile();
-        } else {
-          setProfile(null);
-          setLoading(false);
-        }
-      });
-      return () => unsubscribe();
-    } else {
-      refreshProfile().finally(() => setLoading(false));
-    }
+    refreshProfile().finally(() => setLoading(false));
   }, []);
 
   const logout = async () => {
-    if (USE_FIREBASE) {
-      await signOut(auth);
-    } else {
-      setAuthToken(null);
-      setUser(null);
-      setProfile(null);
-    }
+    setAuthToken(null);
+    setUser(null);
+    setProfile(null);
   };
 
   return (

@@ -1,11 +1,7 @@
 import React, { useState } from "react";
-import { auth, handleFirestoreError, OperationType } from "../firebase";
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from "firebase/auth";
 import { motion, AnimatePresence } from "motion/react";
-import { Shield, Zap, Key, BarChart3, Globe, Mail, Lock, UserPlus, LogIn, Loader2, AlertCircle } from "lucide-react";
-import { cn } from "../lib/utils";
-import { useAuth, USE_FIREBASE } from "../contexts/AuthContext";
-import { storageService } from "../services/storageService";
+import { Zap, Key, BarChart3, Globe, Mail, Lock, UserPlus, LogIn, Loader2, AlertCircle } from "lucide-react";
+import { useAuth } from "../contexts/AuthContext";
 import { apiClient, setAuthToken } from "../services/apiClient";
 
 export const Auth: React.FC = () => {
@@ -22,54 +18,14 @@ export const Auth: React.FC = () => {
     setError(null);
 
     try {
-      if (USE_FIREBASE) {
-        if (isLogin) {
-          await signInWithEmailAndPassword(auth, email, password);
-        } else {
-          await createUserWithEmailAndPassword(auth, email, password);
-        }
-      } else {
-        const endpoint = isLogin ? "/api/auth/login" : "/api/auth/register";
-        const result = await apiClient.post(endpoint, { email, password });
-        setAuthToken(result.token);
-        await refreshProfile();
-      }
+      const endpoint = isLogin ? "/api/auth/login" : "/api/auth/register";
+      const result = await apiClient.post(endpoint, { email, password });
+      setAuthToken(result.token);
+      await refreshProfile();
     } catch (err: any) {
-      console.error("Auth Error:", err.code, err.message);
-      if (!USE_FIREBASE) {
-        setError(err.message);
-        return;
-      }
-      let message = "认证失败，请检查您的输入。";
-      switch (err.code) {
-        case "auth/user-not-found":
-          message = "该用户不存在，请先注册。";
-          break;
-        case "auth/wrong-password":
-          message = "密码错误，请重试。";
-          break;
-        case "auth/invalid-credential":
-          message = "邮箱或密码错误。";
-          break;
-        case "auth/email-already-in-use":
-          message = "该邮箱已被注册，请直接登录。";
-          break;
-        case "auth/weak-password":
-          message = "密码太弱，请至少使用 6 位字符。";
-          break;
-        case "auth/invalid-email":
-          message = "邮箱格式不正确。";
-          break;
-        case "auth/operation-not-allowed":
-          message = "邮箱登录未在 Firebase 控制台启用，请联系管理员。";
-          break;
-        case "auth/too-many-requests":
-          message = "尝试次数过多，账号已暂时锁定，请稍后再试。";
-          break;
-        default:
-          message = `认证失败: ${err.code || "未知错误"}`;
-      }
-      setError(message);
+      console.error("Auth Error:", err?.code, err?.message || err);
+      setError(err.message);
+      return;
     } finally {
       setLoading(false);
     }
