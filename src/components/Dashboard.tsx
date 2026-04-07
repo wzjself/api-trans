@@ -9,6 +9,9 @@ import { Globe, Terminal, Zap, Info, Copy, Check, Activity, Clock } from "lucide
 import { motion } from "motion/react";
 import { format } from "date-fns";
 
+const API_BASE_URL = import.meta.env.VITE_PUBLIC_API_BASE || window.location.origin;
+const OPENAI_BASE_URL = `${API_BASE_URL.replace(/\/$/, "")}/v1`;
+
 const RecentUsageTable: React.FC = () => {
   const { profile } = useAuth();
   const [logs, setLogs] = useState<any[]>([]);
@@ -71,7 +74,7 @@ export const Dashboard: React.FC = () => {
   const [copiedUrl, setCopiedUrl] = useState(false);
 
   const copyUrl = () => {
-    navigator.clipboard.writeText("https://tran.wzjself.site/v1");
+    navigator.clipboard.writeText(OPENAI_BASE_URL);
     setCopiedUrl(true);
     setTimeout(() => setCopiedUrl(false), 2000);
   };
@@ -102,7 +105,7 @@ export const Dashboard: React.FC = () => {
             </div>
             <div className="flex items-center gap-3 p-3 rounded-xl bg-zinc-50 dark:bg-zinc-900 border border-zinc-100 dark:border-zinc-800 font-mono text-sm group">
               <Terminal className="w-4 h-4 text-zinc-400" />
-              <span className="flex-1 truncate">https://tran.wzjself.site/v1</span>
+              <span className="flex-1 truncate">{OPENAI_BASE_URL}</span>
               <button 
                 onClick={copyUrl}
                 className="p-1 hover:text-zinc-900 dark:hover:text-zinc-100 transition-all"

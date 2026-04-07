@@ -6,6 +6,7 @@ import { Shield, Zap, Key, BarChart3, Globe, Mail, Lock, UserPlus, LogIn, Loader
 import { cn } from "../lib/utils";
 import { useAuth, USE_FIREBASE } from "../contexts/AuthContext";
 import { storageService } from "../services/storageService";
+import { apiClient, setAuthToken } from "../services/apiClient";
 
 export const Auth: React.FC = () => {
   const { refreshProfile } = useAuth();
@@ -28,13 +29,10 @@ export const Auth: React.FC = () => {
           await createUserWithEmailAndPassword(auth, email, password);
         }
       } else {
-        // 本地模式
-        if (isLogin) {
-          storageService.login(email, password);
-        } else {
-          storageService.register(email, password);
-        }
-        refreshProfile();
+        const endpoint = isLogin ? "/api/auth/login" : "/api/auth/register";
+        const result = await apiClient.post(endpoint, { email, password });
+        setAuthToken(result.token);
+        await refreshProfile();
       }
     } catch (err: any) {
       console.error("Auth Error:", err.code, err.message);

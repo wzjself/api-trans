@@ -1,0 +1,21 @@
+version: '3.9'
+services:
+  api-trans:
+    build: .
+    container_name: api-trans
+    ports:
+      - "18080:3000"
+    environment:
+      PORT: 3000
+      DATA_DIR: /app/data
+      APP_BASE_URL: http://64.23.161.180:18080
+      VITE_PUBLIC_API_BASE: http://64.23.161.180:18080
+      ADMIN_EMAIL: admin@wzjself.com
+      ADMIN_PASSWORD: 123456
+      ADMIN_INITIAL_BALANCE: 1000000
+      TOKEN_SECRET: change-this-secret
+      UPSTREAM_BASE_URL: ""
+      UPSTREAM_API_KEY: ""
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped

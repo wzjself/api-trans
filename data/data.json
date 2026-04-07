@@ -1,0 +1,33 @@
+{
+  "users": [
+    {
+      "uid": "admin-123",
+      "email": "admin@wzjself.com",
+      "passwordHash": "e7714fb4e86493cd36f40adf103ffb0b:f3abd5636ea9660fa279a481f5886c9cceda195d3e66aa8d61c3518b77ccb69ecffc134ee93f2ef6b1cb3c323a990fc1220f1fd97e463b26b450008886fe4bf7",
+      "role": "admin",
+      "balance": 1000000,
+      "quotaType": "none",
+      "dailyQuota": 0,
+      "quotaExpiresAt": null,
+      "createdAt": "2026-04-07T08:01:04.948Z"
+    }
+  ],
+  "apiKeys": [],
+  "usageLogs": [],
+  "redemptionCodes": [
+    {
+      "code": "WELCOME666",
+      "type": "permanent",
+      "value": 50000,
+      "durationDays": 0,
+      "isUsed": false,
+      "createdAt": "2026-04-07T08:01:04.948Z",
+      "usedBy": null,
+      "usedAt": null
+    }
+  ],
+  "settings": {
+    "guideLink": "https://docs.wzjself.site",
+    "appBaseUrl": "http://64.23.161.180:18080"
+  }
+}

@@ -12,7 +12,7 @@ interface NavbarProps {
 }
 
 export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab }) => {
-  const { user, profile, isAdmin } = useAuth();
+  const { user, profile, isAdmin, logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
 
   return (
@@ -80,7 +80,7 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab }) => {
                   <div className="text-[10px] text-zinc-500 uppercase tracking-wider">{profile?.role}</div>
                 </div>
                 <button
-                  onClick={() => signOut(auth)}
+                  onClick={logout}
                   className="p-2 text-zinc-500 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/10 rounded-lg transition-all"
                 >
                   <LogOut className="w-5 h-5" />

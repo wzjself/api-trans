@@ -3,6 +3,7 @@ import { auth, db, FirebaseUser, handleFirestoreError, OperationType } from "../
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import { doc, onSnapshot, setDoc, serverTimestamp } from "firebase/firestore";
 import { storageService, LocalUser } from "../services/storageService";
+import { apiClient, getAuthToken, setAuthToken } from "../services/apiClient";
 
 // ==========================================
 // 开关：是否启用 Firebase (默认关闭)
@@ -43,13 +44,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const refreshProfile = () => {
+  const refreshProfile = async () => {
     if (!USE_FIREBASE) {
-      const localUser = storageService.getCurrentUser();
-      if (localUser) {
-        setUser(localUser);
-        setProfile(localUser);
-      } else {
+      const token = getAuthToken();
+      if (!token) {
+        setUser(null);
+        setProfile(null);
+        return;
+      }
+      try {
+        const data = await apiClient.get('/api/auth/me');
+        setUser(data.user);
+        setProfile(data.user);
+      } catch {
+        setAuthToken(null);
         setUser(null);
         setProfile(null);
       }
@@ -91,9 +99,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
       return () => unsubscribe();
     } else {
-      storageService.init();
-      refreshProfile();
-      setLoading(false);
+      refreshProfile().finally(() => setLoading(false));
     }
   }, []);
 
@@ -101,8 +107,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (USE_FIREBASE) {
       await signOut(auth);
     } else {
-      storageService.logout();
-      refreshProfile();
+      setAuthToken(null);
+      setUser(null);
+      setProfile(null);
     }
   };
 
