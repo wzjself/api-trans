@@ -40,7 +40,7 @@ export const Auth: React.FC = () => {
       >
         <div className="text-center space-y-4">
           <h1 className="text-5xl font-bold tracking-tight text-zinc-900 dark:text-zinc-100 pt-8">
-            wzjself API
+            wzjself中转站
           </h1>
           <p className="text-zinc-500 text-lg">
             {isLogin ? "欢迎回来，请登录您的账号" : "创建一个新账号以开始使用"}

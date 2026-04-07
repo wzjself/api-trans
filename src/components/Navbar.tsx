@@ -22,7 +22,7 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab }) => {
               <div className="w-8 h-8 bg-zinc-900 dark:bg-zinc-100 rounded-lg flex items-center justify-center">
                 <div className="w-4 h-4 bg-white dark:bg-zinc-900 rounded-sm rotate-45" />
               </div>
-              <span className="text-lg font-bold tracking-tight">wzjself API</span>
+              <span className="text-lg font-bold tracking-tight">wzjself中转站</span>
             </div>
 
             {user && (
