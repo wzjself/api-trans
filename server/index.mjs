@@ -695,8 +695,9 @@ app.post('/api/users/me/api-keys/:id/test-models', authMiddleware, async (req, r
   const keyRecord = rows[0];
   if (!keyRecord) return res.status(404).json({ error: 'API key not found' });
 
-  const { provider } = await getActiveProvider();
-  if (!provider?.base_url) return res.status(503).json({ error: 'No active upstream provider configured' });
+  const routing = await getProviderRouting();
+  const provider = routing.provider;
+  if (!provider?.base_url) return res.status(503).json({ error: 'No enabled upstream provider configured' });
 
   try {
     const response = await fetch(`${APP_BASE_URL.replace(/\/$/, '')}/v1/models`, {
