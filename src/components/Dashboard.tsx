@@ -75,7 +75,7 @@ export const Dashboard: React.FC = () => {
 
   useEffect(() => {
     const timer = window.setInterval(() => {
-      refreshProfile().then(() => setLastSyncedAt(new Date()));
+      Promise.resolve(refreshProfile()).then(() => setLastSyncedAt(new Date()));
     }, 10000);
     return () => window.clearInterval(timer);
   }, [refreshProfile]);
