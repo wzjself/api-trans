@@ -79,9 +79,16 @@ export const ApiKeyManager: React.FC = () => {
   };
 
   const deleteKey = async (id: string) => {
+    const ok = window.confirm("确定要彻底删除这个 API 密钥吗？删除后不可恢复。")
+    if (!ok) return;
     try {
       await dataService.revokeApiKey(id);
-      setKeys((prev) => prev.map((item) => item.id === id ? { ...item, status: "revoked" } : item));
+      setKeys((prev) => prev.filter((item) => item.id !== id));
+      setTestResult((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
     } catch (error) {
       console.error(error);
     }
