@@ -87,42 +87,46 @@ export const UsageChart: React.FC = () => {
   return (
     <div className="space-y-6">
       <div className={`grid grid-cols-1 ${stats.showPermanentBalance ? 'md:grid-cols-4' : 'md:grid-cols-3'} gap-4`}>
-        <div className="p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/50 space-y-2">
+        <div className="p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/50 space-y-2 min-w-0">
           <div className="flex items-center gap-2 text-zinc-500 text-sm font-medium">
-            <Zap className="w-4 h-4" />
+            <Zap className="w-4 h-4 shrink-0" />
             <span>总已用额度</span>
           </div>
-          <div className="text-2xl font-bold tracking-tight">
-            {stats.totalTokens.toLocaleString()} <span className="text-xs font-normal text-zinc-500">Tokens</span>
+          <div className="min-w-0 break-words text-[clamp(1.25rem,2vw,1.75rem)] font-bold tracking-tight leading-tight">
+            {stats.totalTokens.toLocaleString()}
           </div>
+          <div className="text-xs font-normal text-zinc-500">Tokens</div>
         </div>
-        <div className="p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/50 space-y-2">
+        <div className="p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/50 space-y-2 min-w-0">
           <div className="flex items-center gap-2 text-zinc-500 text-sm font-medium">
-            <Activity className="w-4 h-4" />
+            <Activity className="w-4 h-4 shrink-0" />
             <span>使用次数</span>
           </div>
-          <div className="text-2xl font-bold tracking-tight">
-            {stats.totalCount.toLocaleString()} <span className="text-xs font-normal text-zinc-500">次</span>
+          <div className="min-w-0 break-words text-[clamp(1.25rem,2vw,1.75rem)] font-bold tracking-tight leading-tight">
+            {stats.totalCount.toLocaleString()}
           </div>
+          <div className="text-xs font-normal text-zinc-500">次</div>
         </div>
-        <div className="p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/50 space-y-2">
+        <div className="p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/50 space-y-2 min-w-0">
           <div className="flex items-center gap-2 text-zinc-500 text-sm font-medium">
-            <PieChart className="w-4 h-4" />
+            <PieChart className="w-4 h-4 shrink-0" />
             <span>{stats.quotaLabel}</span>
           </div>
-          <div className="text-2xl font-bold tracking-tight">
-            {stats.remainingQuota.toLocaleString()} <span className="text-xs font-normal text-zinc-500">Tokens</span>
+          <div className="min-w-0 break-words text-[clamp(1.25rem,2vw,1.75rem)] font-bold tracking-tight leading-tight">
+            {stats.remainingQuota.toLocaleString()}
           </div>
+          <div className="text-xs font-normal text-zinc-500">Tokens</div>
         </div>
         {stats.showPermanentBalance && (
-          <div className="p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/50 space-y-2">
+          <div className="p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/50 space-y-2 min-w-0 overflow-hidden">
             <div className="flex items-center gap-2 text-zinc-500 text-sm font-medium">
-              <PieChart className="w-4 h-4" />
+              <PieChart className="w-4 h-4 shrink-0" />
               <span>永久额度</span>
             </div>
-            <div className="text-2xl font-bold tracking-tight">
-              {stats.permanentBalance.toLocaleString()} <span className="text-xs font-normal text-zinc-500">Tokens</span>
+            <div className="min-w-0 break-all text-[clamp(1.1rem,1.8vw,1.6rem)] font-bold tracking-tight leading-tight">
+              {stats.permanentBalance.toLocaleString()}
             </div>
+            <div className="text-xs font-normal text-zinc-500">Tokens</div>
           </div>
         )}
       </div>
