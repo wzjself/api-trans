@@ -400,6 +400,30 @@ app.get('/api/admin/providers', authMiddleware, adminMiddleware, async (_req, re
   });
 });
 
+app.post('/api/admin/providers/fetch-models', authMiddleware, adminMiddleware, async (req, res) => {
+  const baseUrl = String(req.body?.baseUrl || '').replace(/\/$/, '');
+  const apiKey = String(req.body?.apiKey || '');
+  if (!baseUrl) return res.status(400).json({ error: 'baseUrl is required' });
+
+  try {
+    const response = await fetch(`${baseUrl}/models`, {
+      headers: {
+        'Content-Type': 'application/json',
+        ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+      },
+    });
+    const text = await response.text();
+    let models = [];
+    try {
+      const json = JSON.parse(text);
+      models = Array.isArray(json?.data) ? json.data.map((item) => item.id).filter(Boolean) : [];
+    } catch {}
+    res.json({ ok: response.ok, status: response.status, models, raw: text.slice(0, 5000) });
+  } catch (error) {
+    res.status(502).json({ error: 'Fetch models failed', detail: String(error) });
+  }
+});
+
 app.post('/api/admin/providers', authMiddleware, adminMiddleware, async (req, res) => {
   const body = req.body || {};
   const id = body.id || randomId('prov_');
@@ -630,6 +654,33 @@ app.get('/v1/models', async (_req, res) => {
     res.status(response.status).type(response.headers.get('content-type') || 'application/json').send(text);
   } catch (error) {
     res.status(502).json({ error: 'Upstream unavailable', detail: String(error) });
+  }
+});
+
+app.post('/api/users/me/api-keys/:id/test-models', authMiddleware, async (req, res) => {
+  const rows = await query('SELECT * FROM api_keys WHERE id = :id AND uid = :uid LIMIT 1', { id: req.params.id, uid: req.user.uid });
+  const keyRecord = rows[0];
+  if (!keyRecord) return res.status(404).json({ error: 'API key not found' });
+
+  const { provider } = await getActiveProvider();
+  if (!provider?.base_url) return res.status(503).json({ error: 'No active upstream provider configured' });
+
+  try {
+    const response = await fetch(`${APP_BASE_URL.replace(/\/$/, '')}/v1/models`, {
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${keyRecord.api_key}`,
+      },
+    });
+    const text = await response.text();
+    let models = [];
+    try {
+      const json = JSON.parse(text);
+      models = Array.isArray(json?.data) ? json.data.map((item) => item.id).filter(Boolean) : [];
+    } catch {}
+    res.json({ ok: response.ok, status: response.status, models, raw: text.slice(0, 5000) });
+  } catch (error) {
+    res.status(502).json({ error: 'Test request failed', detail: String(error) });
   }
 });
 

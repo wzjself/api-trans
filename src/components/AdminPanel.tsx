@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { dataService } from "../services/dataService";
-import { Users, Key, Plus, Trash2, Shield, User as UserIcon, Check, Copy, Settings, Database, Save } from "lucide-react";
+import { Users, Key, Plus, Trash2, Shield, User as UserIcon, Check, Copy, Settings, Database, Save, RefreshCw } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { cn } from "../lib/utils";
 
@@ -52,6 +52,7 @@ export const AdminPanel: React.FC = () => {
   const [providerForm, setProviderForm] = useState<ProviderConfig>({ id: "", name: "", baseUrl: "", apiKey: "", enabled: true, models: [] });
   const [providerModelsInput, setProviderModelsInput] = useState("");
   const [isSavingProvider, setIsSavingProvider] = useState(false);
+  const [isFetchingModels, setIsFetchingModels] = useState(false);
 
   const safeCopy = async (text: string) => {
     try {
@@ -162,6 +163,19 @@ export const AdminPanel: React.FC = () => {
     }
   };
 
+  const fetchProviderModels = async () => {
+    if (!providerForm.baseUrl.trim()) return;
+    setIsFetchingModels(true);
+    try {
+      const result = await dataService.fetchProviderModels(providerForm.baseUrl.trim(), providerForm.apiKey.trim());
+      if (Array.isArray(result.models) && result.models.length > 0) {
+        setProviderModelsInput(result.models.join("\n"));
+      }
+    } finally {
+      setIsFetchingModels(false);
+    }
+  };
+
   const saveSelection = async () => {
     await dataService.selectProvider(activeProviderId, activeModel);
     loadAdminData();
@@ -200,7 +214,13 @@ export const AdminPanel: React.FC = () => {
               <input className="px-3 py-2 text-sm rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900" placeholder="上游 Base URL，如 https://api.openai.com/v1" value={providerForm.baseUrl} onChange={(e) => setProviderForm({ ...providerForm, baseUrl: e.target.value })} />
               <input className="px-3 py-2 text-sm rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900" placeholder="上游 API Key" value={providerForm.apiKey} onChange={(e) => setProviderForm({ ...providerForm, apiKey: e.target.value })} />
               <textarea className="px-3 py-2 text-sm rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 min-h-[100px]" placeholder="模型列表，一行一个或逗号分隔" value={providerModelsInput} onChange={(e) => setProviderModelsInput(e.target.value)} />
-              <button onClick={saveProvider} disabled={isSavingProvider} className="px-6 py-2 text-sm font-medium text-white bg-zinc-900 dark:bg-zinc-100 dark:text-zinc-900 rounded-xl flex items-center justify-center gap-2"><Save className="w-4 h-4" />保存渠道</button>
+              <div className="flex gap-2">
+                <button type="button" onClick={fetchProviderModels} disabled={isFetchingModels || !providerForm.baseUrl.trim()} className="px-4 py-2 text-sm font-medium rounded-xl border border-zinc-200 dark:border-zinc-800 flex items-center justify-center gap-2">
+                  <RefreshCw className={`w-4 h-4 ${isFetchingModels ? 'animate-spin' : ''}`} />
+                  {isFetchingModels ? '获取中...' : '获取模型'}
+                </button>
+                <button onClick={saveProvider} disabled={isSavingProvider} className="px-6 py-2 text-sm font-medium text-white bg-zinc-900 dark:bg-zinc-100 dark:text-zinc-900 rounded-xl flex items-center justify-center gap-2"><Save className="w-4 h-4" />保存渠道</button>
+              </div>
             </div>
           </div>
           <div className="p-6 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/50 space-y-4">

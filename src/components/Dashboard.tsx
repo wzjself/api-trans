@@ -73,8 +73,32 @@ export const Dashboard: React.FC = () => {
 
   const [copiedUrl, setCopiedUrl] = useState(false);
 
-  const copyUrl = () => {
-    navigator.clipboard.writeText(OPENAI_BASE_URL);
+  const safeCopy = async (text: string) => {
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+        return true;
+      }
+    } catch {}
+    try {
+      const textarea = document.createElement("textarea");
+      textarea.value = text;
+      textarea.style.position = "fixed";
+      textarea.style.opacity = "0";
+      document.body.appendChild(textarea);
+      textarea.focus();
+      textarea.select();
+      const ok = document.execCommand("copy");
+      document.body.removeChild(textarea);
+      return ok;
+    } catch {
+      return false;
+    }
+  };
+
+  const copyUrl = async () => {
+    const copied = await safeCopy(OPENAI_BASE_URL);
+    if (!copied) return;
     setCopiedUrl(true);
     setTimeout(() => setCopiedUrl(false), 2000);
   };

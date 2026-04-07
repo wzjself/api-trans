@@ -13,6 +13,10 @@ export const dataService = {
     return apiClient.post('/api/users/me/api-keys', { name });
   },
 
+  testApiKeyModels: async (id: string) => {
+    return apiClient.post(`/api/users/me/api-keys/${encodeURIComponent(id)}/test-models`);
+  },
+
   revokeApiKey: async (id: string) => {
     return apiClient.delete(`/api/api-keys/${id}`);
   },
@@ -89,6 +93,10 @@ export const dataService = {
 
   saveProvider: async (provider: any) => {
     return apiClient.post('/api/admin/providers', provider);
+  },
+
+  fetchProviderModels: async (baseUrl: string, apiKey: string) => {
+    return apiClient.post('/api/admin/providers/fetch-models', { baseUrl, apiKey });
   },
 
   deleteProvider: async (id: string) => {
