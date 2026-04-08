@@ -63,22 +63,18 @@ export const dataService = {
   subscribeAllUsers: (callback: (users: any[]) => void, quotaType?: string) => {
     let cancelled = false;
     const qs = quotaType ? `?quotaType=${encodeURIComponent(quotaType)}` : '';
-    const run = () => apiClient.get(`/api/admin/users${qs}`).then((data) => {
+    apiClient.get(`/api/admin/users${qs}`).then((data) => {
       if (!cancelled) callback(data as any[]);
     }).catch(console.error);
-    run();
-    const timer = window.setInterval(run, POLL_ADMIN);
-    return () => { cancelled = true; window.clearInterval(timer); };
+    return () => { cancelled = true; };
   },
 
   subscribeAllCodes: (callback: (codes: any[]) => void) => {
     let cancelled = false;
-    const run = () => apiClient.get('/api/admin/codes').then((data) => {
+    apiClient.get('/api/admin/codes').then((data) => {
       if (!cancelled) callback(data as any[]);
     }).catch(console.error);
-    run();
-    const timer = window.setInterval(run, POLL_ADMIN);
-    return () => { cancelled = true; window.clearInterval(timer); };
+    return () => { cancelled = true; };
   },
 
   addCode: async (codeData: any) => {
@@ -99,12 +95,10 @@ export const dataService = {
 
   subscribeSettings: (callback: (settings: any) => void) => {
     let cancelled = false;
-    const run = () => apiClient.get('/api/settings').then((data) => {
+    apiClient.get('/api/settings').then((data) => {
       if (!cancelled) callback(data);
     }).catch(console.error);
-    run();
-    const timer = window.setInterval(run, POLL_ADMIN);
-    return () => { cancelled = true; window.clearInterval(timer); };
+    return () => { cancelled = true; };
   },
 
   updateSettings: async (settings: any) => {
@@ -113,12 +107,10 @@ export const dataService = {
 
   subscribeProviders: (callback: (data: any) => void) => {
     let cancelled = false;
-    const run = () => apiClient.get('/api/admin/providers').then((data) => {
+    apiClient.get('/api/admin/providers').then((data) => {
       if (!cancelled) callback(data);
     }).catch(console.error);
-    run();
-    const timer = window.setInterval(run, POLL_ADMIN);
-    return () => { cancelled = true; window.clearInterval(timer); };
+    return () => { cancelled = true; };
   },
 
   saveProvider: async (provider: any) => {
