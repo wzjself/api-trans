@@ -124,11 +124,26 @@ async function query(sql, params = {}) {
 async function getSetting(key, fallback = null) {
   const rows = await query('SELECT setting_value FROM settings WHERE setting_key = :key LIMIT 1', { key });
   if (!rows.length) return fallback;
-  try {
-    return JSON.parse(rows[0].setting_value);
-  } catch {
-    return fallback;
+  const rawValue = rows[0].setting_value;
+  if (rawValue == null) return fallback;
+  if (Buffer.isBuffer(rawValue)) {
+    try {
+      return JSON.parse(rawValue.toString('utf8'));
+    } catch {
+      return fallback;
+    }
   }
+  if (typeof rawValue === 'string') {
+    try {
+      return JSON.parse(rawValue);
+    } catch {
+      return fallback;
+    }
+  }
+  if (typeof rawValue === 'object') {
+    return rawValue;
+  }
+  return fallback;
 }
 
 async function setSetting(key, value) {
