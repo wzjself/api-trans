@@ -56,7 +56,8 @@ export const AdminPanel: React.FC = () => {
   const [isDeletingUser, setIsDeletingUser] = useState(false);
   const [newBalance, setNewBalance] = useState(0);
   const [settings, setSettings] = useState({ guideLink: "", announcement: "" });
-  const [isSavingSettings, setIsSavingSettings] = useState(false);
+  const [isSavingGuideLink, setIsSavingGuideLink] = useState(false);
+  const [isSavingAnnouncement, setIsSavingAnnouncement] = useState(false);
   const [providers, setProviders] = useState<ProviderConfig[]>([]);
   const [defaultModel, setDefaultModel] = useState("");
   const [providerForm, setProviderForm] = useState<ProviderConfig>({ id: "", name: "", baseUrl: "", apiKey: "", enabled: true, models: [] });
@@ -73,6 +74,19 @@ export const AdminPanel: React.FC = () => {
   const formatCodePreview = (code: string) => (shouldCollapseCode(code) ? `${code.slice(0, 10)}...${code.slice(-6)}` : code);
   const toggleCodeExpanded = (code: string) => setExpandedCodes((prev) => ({ ...prev, [code]: !prev[code] }));
   const generatedCodesText = useMemo(() => lastGeneratedCodes.join("\n"), [lastGeneratedCodes]);
+  const allCodesText = useMemo(() => codes.map((item) => item.code).join("\n"), [codes]);
+  const hasCollapsibleCodes = useMemo(() => codes.some((item) => shouldCollapseCode(item.code)), [codes]);
+  const areAllCollapsibleCodesExpanded = useMemo(() => {
+    const collapsibleCodes = codes.filter((item) => shouldCollapseCode(item.code));
+    return collapsibleCodes.length > 0 && collapsibleCodes.every((item) => expandedCodes[item.code]);
+  }, [codes, expandedCodes]);
+
+  const formatTokensInMillions = (value: number) => {
+    const millions = Number(value || 0) / 1_000_000;
+    if (millions >= 100) return `${millions.toFixed(0)} M`;
+    if (millions >= 10) return `${millions.toFixed(1)} M`;
+    return `${millions.toFixed(2)} M`;
+  };
 
   const safeCopy = async (text: string) => {
     try {
@@ -132,12 +146,21 @@ export const AdminPanel: React.FC = () => {
     });
   }, [newCode.type]);
 
-  const saveSettings = async () => {
-    setIsSavingSettings(true);
+  const saveGuideLink = async () => {
+    setIsSavingGuideLink(true);
     try {
-      await dataService.updateSettings(settings);
+      await dataService.updateSettings({ guideLink: settings.guideLink });
     } finally {
-      setIsSavingSettings(false);
+      setIsSavingGuideLink(false);
+    }
+  };
+
+  const saveAnnouncement = async () => {
+    setIsSavingAnnouncement(true);
+    try {
+      await dataService.updateSettings({ announcement: settings.announcement });
+    } finally {
+      setIsSavingAnnouncement(false);
     }
   };
 
@@ -186,8 +209,9 @@ export const AdminPanel: React.FC = () => {
   };
 
   const exportGeneratedCodes = () => {
-    if (!lastGeneratedCodes.length) return;
-    const blob = new Blob([generatedCodesText], { type: "text/plain;charset=utf-8" });
+    const sourceCodes = lastGeneratedCodes.length ? generatedCodesText : allCodesText;
+    if (!sourceCodes) return;
+    const blob = new Blob([sourceCodes], { type: "text/plain;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
@@ -196,6 +220,19 @@ export const AdminPanel: React.FC = () => {
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
+  };
+
+  const toggleExpandAllCodes = () => {
+    const collapsibleCodes = codes.filter((item) => shouldCollapseCode(item.code));
+    if (!collapsibleCodes.length) return;
+    const nextExpanded = !areAllCollapsibleCodesExpanded;
+    setExpandedCodes((prev) => {
+      const next = { ...prev };
+      for (const item of collapsibleCodes) {
+        next[item.code] = nextExpanded;
+      }
+      return next;
+    });
   };
 
   const updateUserBalance = async () => {
@@ -268,8 +305,8 @@ export const AdminPanel: React.FC = () => {
         <div className="p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/50"><div className="text-xs text-zinc-500">平台总用户</div><div className="text-2xl font-bold tracking-tight">{platformSummary.totalUsers.toLocaleString()}</div></div>
         <div className="p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/50"><div className="text-xs text-zinc-500">活跃密钥</div><div className="text-2xl font-bold tracking-tight">{platformSummary.totalApiKeys.toLocaleString()}</div></div>
         <div className="p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/50"><div className="text-xs text-zinc-500">总请求数</div><div className="text-2xl font-bold tracking-tight">{platformSummary.totalRequests.toLocaleString()}</div></div>
-        <div className="p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/50"><div className="text-xs text-zinc-500">平台总消耗</div><div className="text-2xl font-bold tracking-tight">{platformSummary.totalTokens.toLocaleString()}</div></div>
-        <div className="p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/50"><div className="text-xs text-zinc-500">今日消耗</div><div className="text-2xl font-bold tracking-tight">{platformSummary.todayTokens.toLocaleString()}</div></div>
+        <div className="p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/50"><div className="text-xs text-zinc-500">平台总消耗</div><div className="text-2xl font-bold tracking-tight">{formatTokensInMillions(platformSummary.totalTokens)}</div><div className="text-[10px] text-zinc-400 mt-1">单位：M</div></div>
+        <div className="p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/50"><div className="text-xs text-zinc-500">今日消耗</div><div className="text-2xl font-bold tracking-tight">{formatTokensInMillions(platformSummary.todayTokens)}</div><div className="text-[10px] text-zinc-400 mt-1">单位：M</div></div>
         <div className="p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/50"><div className="text-xs text-zinc-500">实时 RPM</div><div className="text-2xl font-bold tracking-tight">{Number(platformSummary.rpm || 0).toLocaleString()}</div><div className="text-[10px] text-zinc-400 mt-1">最近 1 分钟请求数</div></div>
         <div className="p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/50"><div className="text-xs text-zinc-500">实时 TPM</div><div className="text-2xl font-bold tracking-tight">{Number(platformSummary.tpm || 0).toLocaleString()}</div><div className="text-[10px] text-zinc-400 mt-1">最近 1 分钟 Token</div></div>
       </div>
@@ -303,12 +340,13 @@ export const AdminPanel: React.FC = () => {
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-zinc-500 uppercase tracking-wider">使用指南链接</label>
             <input type="url" className="w-full px-3 py-2 text-sm rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900" value={settings.guideLink} onChange={(e) => setSettings({ ...settings, guideLink: e.target.value })} placeholder="https://..." />
+            <button onClick={saveGuideLink} disabled={isSavingGuideLink} className="px-6 py-2 text-sm font-medium text-white bg-zinc-900 dark:bg-zinc-100 dark:text-zinc-900 rounded-xl">{isSavingGuideLink ? '保存中...' : '单独保存指南链接'}</button>
           </div>
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-zinc-500 uppercase tracking-wider">公告内容</label>
             <textarea className="w-full px-3 py-2 text-sm rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 min-h-[120px]" value={settings.announcement} onChange={(e) => setSettings({ ...settings, announcement: e.target.value })} placeholder="这里填写用户页展示的公告内容" />
+            <button onClick={saveAnnouncement} disabled={isSavingAnnouncement} className="px-6 py-2 text-sm font-medium text-white bg-zinc-900 dark:bg-zinc-100 dark:text-zinc-900 rounded-xl">{isSavingAnnouncement ? '保存中...' : '单独保存公告内容'}</button>
           </div>
-          <button onClick={saveSettings} disabled={isSavingSettings} className="px-6 py-2 text-sm font-medium text-white bg-zinc-900 dark:bg-zinc-100 dark:text-zinc-900 rounded-xl">保存设置</button>
         </div>
       </div>
 
@@ -374,9 +412,10 @@ export const AdminPanel: React.FC = () => {
           {newCode.type !== "permanent" && <div className="space-y-1.5"><label className="text-xs font-medium text-zinc-500 uppercase tracking-wider">持续天数</label><input type="number" className="w-full px-3 py-2 text-sm rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900" value={newCode.durationDays} onChange={(e) => setNewCode({ ...newCode, durationDays: parseInt(e.target.value || '0') })} /></div>}
           <div className="space-y-1.5"><label className="text-xs font-medium text-zinc-500 uppercase tracking-wider">批量数量</label><input type="number" min="1" max="200" className="w-full px-3 py-2 text-sm rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900" value={newCode.count} onChange={(e) => setNewCode({ ...newCode, count: Math.max(1, Math.min(200, parseInt(e.target.value || '1'))) })} /></div>
           <button onClick={generateCode} disabled={isGenerating} className="px-6 py-2 text-sm font-medium text-white bg-zinc-900 dark:bg-zinc-100 dark:text-zinc-900 rounded-xl">{isGenerating ? '生成中...' : '生成兑换码'}</button>
-          {lastGeneratedCodes.length > 1 && <button type="button" onClick={exportGeneratedCodes} className="px-6 py-2 text-sm font-medium rounded-xl border border-zinc-200 dark:border-zinc-800 flex items-center gap-2"><Download className="w-4 h-4" />导出 TXT</button>}
+          {hasCollapsibleCodes && <button type="button" onClick={toggleExpandAllCodes} className="px-6 py-2 text-sm font-medium rounded-xl border border-zinc-200 dark:border-zinc-800 flex items-center gap-2">{areAllCollapsibleCodesExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}{areAllCollapsibleCodesExpanded ? '收起全部' : '展开全部'}</button>}
+          <button type="button" onClick={exportGeneratedCodes} disabled={!codes.length} className="px-6 py-2 text-sm font-medium rounded-xl border border-zinc-200 dark:border-zinc-800 flex items-center gap-2 disabled:opacity-50"><Download className="w-4 h-4" />下载 TXT</button>
         </div>
-        {lastGeneratedCodes.length > 1 && <div className="text-xs text-zinc-500">最近批量生成 {lastGeneratedCodes.length} 个兑换码，可直接导出 txt，一行一个兑换码。</div>}
+        {!!lastGeneratedCodes.length && <div className="text-xs text-zinc-500">最近批量生成 {lastGeneratedCodes.length} 个兑换码；下载 TXT 默认优先导出最近生成的兑换码，否则导出当前列表。</div>}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           <AnimatePresence mode="popLayout">
             {codes.map((code) => {
