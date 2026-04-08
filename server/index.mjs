@@ -24,7 +24,7 @@ const MYSQL_USER = process.env.MYSQL_USER || 'root';
 const MYSQL_PASSWORD = process.env.MYSQL_PASSWORD || 'wzjself';
 const MYSQL_DATABASE = process.env.MYSQL_DATABASE || 'api_trans';
 
-app.use(express.json({ limit: '2mb' }));
+app.use(express.json({ limit: '100mb' }));
 
 const pool = mysql.createPool({
   host: MYSQL_HOST,
