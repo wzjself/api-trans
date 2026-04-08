@@ -2,6 +2,7 @@ import { apiClient } from "./apiClient";
 
 const POLL_FAST = 10000;
 const POLL_MEDIUM = 15000;
+const POLL_ADMIN = 3000;
 
 export const dataService = {
   subscribeApiKeys: (uid: string, callback: (keys: any[]) => void) => {
@@ -66,16 +67,18 @@ export const dataService = {
       if (!cancelled) callback(data as any[]);
     }).catch(console.error);
     run();
-    const timer = window.setInterval(run, POLL_MEDIUM);
+    const timer = window.setInterval(run, POLL_ADMIN);
     return () => { cancelled = true; window.clearInterval(timer); };
   },
 
   subscribeAllCodes: (callback: (codes: any[]) => void) => {
     let cancelled = false;
-    apiClient.get('/api/admin/codes').then((data) => {
+    const run = () => apiClient.get('/api/admin/codes').then((data) => {
       if (!cancelled) callback(data as any[]);
     }).catch(console.error);
-    return () => { cancelled = true; };
+    run();
+    const timer = window.setInterval(run, POLL_ADMIN);
+    return () => { cancelled = true; window.clearInterval(timer); };
   },
 
   addCode: async (codeData: any) => {
@@ -96,10 +99,12 @@ export const dataService = {
 
   subscribeSettings: (callback: (settings: any) => void) => {
     let cancelled = false;
-    apiClient.get('/api/settings').then((data) => {
+    const run = () => apiClient.get('/api/settings').then((data) => {
       if (!cancelled) callback(data);
     }).catch(console.error);
-    return () => { cancelled = true; };
+    run();
+    const timer = window.setInterval(run, POLL_ADMIN);
+    return () => { cancelled = true; window.clearInterval(timer); };
   },
 
   updateSettings: async (settings: any) => {
@@ -108,10 +113,12 @@ export const dataService = {
 
   subscribeProviders: (callback: (data: any) => void) => {
     let cancelled = false;
-    apiClient.get('/api/admin/providers').then((data) => {
+    const run = () => apiClient.get('/api/admin/providers').then((data) => {
       if (!cancelled) callback(data);
     }).catch(console.error);
-    return () => { cancelled = true; };
+    run();
+    const timer = window.setInterval(run, POLL_ADMIN);
+    return () => { cancelled = true; window.clearInterval(timer); };
   },
 
   saveProvider: async (provider: any) => {
@@ -140,7 +147,7 @@ export const dataService = {
       if (!cancelled) callback(data);
     }).catch(console.error);
     run();
-    const timer = window.setInterval(run, POLL_MEDIUM);
+    const timer = window.setInterval(run, POLL_ADMIN);
     return () => { cancelled = true; window.clearInterval(timer); };
   },
 
@@ -150,7 +157,7 @@ export const dataService = {
       if (!cancelled) callback(data as any[]);
     }).catch(console.error);
     run();
-    const timer = window.setInterval(run, POLL_MEDIUM);
+    const timer = window.setInterval(run, POLL_ADMIN);
     return () => { cancelled = true; window.clearInterval(timer); };
   }
 };
