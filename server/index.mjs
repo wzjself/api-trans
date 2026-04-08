@@ -765,15 +765,16 @@ app.post('/api/redeem', authMiddleware, async (req, res) => {
 
     if (hasActiveQuotaCard) {
       const mergedQuotaType = (currentUser.quota_type === 'monthly' || item.type === 'monthly') ? 'monthly' : 'daily';
+      const mergedDailyQuota = Math.max(Number(currentUser.daily_quota || 0), Number(item.value || 0));
       await query(
         `UPDATE users
          SET quota_type = :quota_type,
-             daily_quota = COALESCE(daily_quota, 0) + :daily_quota,
+             daily_quota = :daily_quota,
              quota_expires_at = DATE_ADD(quota_expires_at, INTERVAL :duration_days DAY)
          WHERE uid = :uid`,
         {
           quota_type: mergedQuotaType,
-          daily_quota: Number(item.value || 0),
+          daily_quota: mergedDailyQuota,
           duration_days: Number(item.duration_days || 30),
           uid: req.user.uid,
         }
