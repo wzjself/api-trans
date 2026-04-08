@@ -1,5 +1,4 @@
 import React, { useState } from "react";
-import { motion, AnimatePresence } from "motion/react";
 import { Zap, Key, BarChart3, Globe, Mail, Lock, UserPlus, LogIn, Loader2, AlertCircle } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import { apiClient, setAuthToken } from "../services/apiClient";
@@ -33,11 +32,7 @@ export const Auth: React.FC = () => {
 
   return (
     <div className="min-h-[calc(100vh-64px)] flex flex-col items-center justify-center p-4">
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="max-w-md w-full space-y-8"
-      >
+      <div className="max-w-md w-full space-y-8">
         <div className="text-center space-y-4">
           <h1 className="text-5xl font-bold tracking-tight text-zinc-900 dark:text-zinc-100 pt-8">
             wzjself中转站
@@ -76,19 +71,12 @@ export const Auth: React.FC = () => {
               />
             </div>
 
-            <AnimatePresence>
-              {error && (
-                <motion.div
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: "auto" }}
-                  exit={{ opacity: 0, height: 0 }}
-                  className="p-3 rounded-xl bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-400 text-xs flex items-center gap-2"
-                >
-                  <AlertCircle className="w-4 h-4" />
-                  {error}
-                </motion.div>
-              )}
-            </AnimatePresence>
+            {error && (
+              <div className="p-3 rounded-xl bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-400 text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4" />
+                {error}
+              </div>
+            )}
 
             <button
               type="submit"
@@ -111,7 +99,11 @@ export const Auth: React.FC = () => {
 
           <div className="pt-4 text-center">
             <button
-              onClick={() => setIsLogin(!isLogin)}
+              type="button"
+              onClick={() => {
+                setError(null);
+                setIsLogin(!isLogin);
+              }}
               className="text-sm text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors"
             >
               {isLogin ? "还没有账号？ 点击注册" : "已有账号？ 点击登录"}
@@ -133,7 +125,7 @@ export const Auth: React.FC = () => {
             </div>
           ))}
         </div>
-      </motion.div>
+      </div>
     </div>
   );
 };
