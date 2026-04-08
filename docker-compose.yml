@@ -1,11 +1,8 @@
-version: '3.9'
 services:
-  api-trans:
+  api-trans-blue:
     build: .
-    container_name: api-trans
-    ports:
-      - "18080:3000"
-    environment:
+    container_name: api-trans-blue
+    environment: &api_trans_env
       PORT: 3000
       APP_BASE_URL: http://64.23.161.180:18080
       VITE_PUBLIC_API_BASE: http://64.23.161.180:18080
@@ -22,3 +19,35 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     restart: unless-stopped
+    networks:
+      - default
+      - shared-services
+
+  api-trans-green:
+    build: .
+    container_name: api-trans-green
+    environment: *api_trans_env
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+    networks:
+      - default
+      - shared-services
+
+  gateway:
+    image: nginx:1.27-alpine
+    container_name: api-trans-gateway
+    depends_on:
+      - api-trans-blue
+    ports:
+      - "18080:80"
+    volumes:
+      - ./deploy/nginx/nginx.active.conf:/etc/nginx/nginx.conf:ro
+    restart: unless-stopped
+    networks:
+      - default
+      - shared-services
+
+networks:
+  shared-services:
+    external: true

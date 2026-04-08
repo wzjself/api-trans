@@ -434,6 +434,38 @@ async function recordRequestOnly(user, apiKeyId, providerId, model, requestPath,
   );
 }
 
+function extractUsageFromPayload(json, fallbackModel = 'unknown') {
+  const model = json?.model || fallbackModel || 'unknown';
+  const usage = json?.usage || {};
+  let promptTokens = Number(usage?.prompt_tokens ?? usage?.input_tokens ?? 0);
+  let completionTokens = Number(usage?.completion_tokens ?? usage?.output_tokens ?? 0);
+  let totalTokens = Number(usage?.total_tokens ?? (promptTokens + completionTokens) ?? 0);
+
+  if (json?.message?.usage) {
+    promptTokens = Number(json.message.usage?.input_tokens ?? promptTokens);
+    completionTokens = Number(json.message.usage?.output_tokens ?? completionTokens);
+    totalTokens = Number(json.message.usage?.total_tokens ?? (promptTokens + completionTokens));
+  }
+
+  if (json?.type === 'message_start' && json?.message?.usage) {
+    promptTokens = Number(json.message.usage?.input_tokens ?? promptTokens);
+    totalTokens = Number(promptTokens + completionTokens);
+  }
+
+  if (json?.type === 'message_delta' && json?.usage) {
+    completionTokens = Number(json.usage?.output_tokens ?? completionTokens);
+    totalTokens = Number(promptTokens + completionTokens);
+  }
+
+  if (json?.response?.usage) {
+    promptTokens = Number(json.response.usage?.input_tokens ?? promptTokens);
+    completionTokens = Number(json.response.usage?.output_tokens ?? completionTokens);
+    totalTokens = Number(json.response.usage?.total_tokens ?? (promptTokens + completionTokens));
+  }
+
+  return { model, promptTokens, completionTokens, totalTokens };
+}
+
 async function findUserByApiKey(key) {
   const rows = await query(
     `SELECT ak.id, ak.uid, ak.name, ak.api_key, ak.status, u.*
@@ -881,15 +913,17 @@ app.all(/^\/v1\/(.+)/, async (req, res) => {
   const routing = await getProviderRouting(req.body?.model || '');
   const provider = routing.provider;
   const activeModel = routing.model;
+  const requestPath = `/v1/${req.params[0] || ''}`;
+  const requestedModel = req.body?.model || activeModel || 'unknown';
   if (!provider?.base_url) {
-    await recordRequestOnly(found, found.id, null, req.body?.model || activeModel || 'unknown', `/v1/${req.params[0] || ''}`, 503, 0, 'No enabled upstream provider configured');
+    await recordRequestOnly(found, found.id, null, requestedModel, requestPath, 503, 0, 'No enabled upstream provider configured');
     return res.status(503).json({ error: 'No enabled upstream provider configured' });
   }
 
   const user = await getUserByUid(found.uid);
   const quota = await getQuotaStatus(user);
   if (quota.remaining <= 0) {
-    await recordRequestOnly(user, found.id, provider.id, req.body?.model || activeModel || 'unknown', `/v1/${req.params[0] || ''}`, 402, 0, 'Quota exhausted');
+    await recordRequestOnly(user, found.id, provider.id, requestedModel, requestPath, 402, 0, 'Quota exhausted');
     return res.status(402).json({ error: 'Quota exhausted' });
   }
 
@@ -897,6 +931,7 @@ app.all(/^\/v1\/(.+)/, async (req, res) => {
   const target = `${String(provider.base_url).replace(/\/$/, '')}/${proxyPath}`;
   const body = req.body && typeof req.body === 'object' ? { ...req.body } : {};
   if (activeModel && !body.model) body.model = activeModel;
+  const wantsStream = Boolean(body?.stream) || String(req.headers.accept || '').includes('text/event-stream');
 
   try {
     const response = await fetch(target, {
@@ -908,24 +943,65 @@ app.all(/^\/v1\/(.+)/, async (req, res) => {
       body: ['GET', 'HEAD'].includes(req.method) ? undefined : JSON.stringify(body),
     });
     const contentType = response.headers.get('content-type') || 'application/json';
-    const text = await response.text();
 
+    if (wantsStream && response.body) {
+      res.status(response.status);
+      res.setHeader('Content-Type', contentType);
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+
+      let aggregate = { model: requestedModel, promptTokens: 0, completionTokens: 0, totalTokens: 0 };
+      let rawError = null;
+      const decoder = new TextDecoder();
+
+      for await (const chunk of response.body) {
+        const textChunk = decoder.decode(chunk, { stream: true });
+        res.write(textChunk);
+        const lines = textChunk.split('\n');
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed.startsWith('data:')) continue;
+          const payload = trimmed.slice(5).trim();
+          if (!payload || payload === '[DONE]') continue;
+          try {
+            const json = JSON.parse(payload);
+            const parsed = extractUsageFromPayload(json, aggregate.model);
+            aggregate = {
+              model: parsed.model || aggregate.model,
+              promptTokens: Math.max(aggregate.promptTokens, parsed.promptTokens || 0),
+              completionTokens: Math.max(aggregate.completionTokens, parsed.completionTokens || 0),
+              totalTokens: Math.max(aggregate.totalTokens, parsed.totalTokens || 0),
+            };
+          } catch {
+            rawError = rawError || payload.slice(0, 500);
+          }
+        }
+      }
+      res.end();
+
+      if (aggregate.totalTokens > 0) {
+        await chargeUser(user, aggregate.totalTokens, aggregate.model, provider.id, requestPath, aggregate.promptTokens, aggregate.completionTokens, found.id, response.status, response.ok ? 1 : 0, null);
+      } else {
+        await recordRequestOnly(user, found.id, provider.id, aggregate.model, requestPath, response.status, response.ok ? 1 : 0, rawError);
+      }
+      return;
+    }
+
+    const textResp = await response.text();
     let usageRecorded = false;
     if (response.ok && contentType.includes('application/json')) {
       try {
-        const json = JSON.parse(text);
-        const promptTokens = Number(json?.usage?.prompt_tokens ?? json?.usage?.input_tokens ?? 0);
-        const completionTokens = Number(json?.usage?.completion_tokens ?? json?.usage?.output_tokens ?? 0);
-        const tokens = Number(json?.usage?.total_tokens ?? (promptTokens + completionTokens) ?? 0);
-        if (tokens > 0) {
+        const json = JSON.parse(textResp);
+        const parsed = extractUsageFromPayload(json, requestedModel);
+        if (parsed.totalTokens > 0) {
           await chargeUser(
             user,
-            tokens,
-            json?.model || body?.model || activeModel || 'unknown',
+            parsed.totalTokens,
+            parsed.model,
             provider.id,
-            `/v1/${proxyPath}`,
-            promptTokens,
-            completionTokens,
+            requestPath,
+            parsed.promptTokens,
+            parsed.completionTokens,
             found.id,
             response.status,
             1,
@@ -934,7 +1010,6 @@ app.all(/^\/v1\/(.+)/, async (req, res) => {
           usageRecorded = true;
         }
       } catch {
-        // ignore usage parse failures
       }
     }
 
@@ -943,18 +1018,27 @@ app.all(/^\/v1\/(.+)/, async (req, res) => {
         user,
         found.id,
         provider.id,
-        body?.model || activeModel || 'unknown',
-        `/v1/${proxyPath}`,
+        requestedModel,
+        requestPath,
         response.status,
         response.ok ? 1 : 0,
-        response.ok ? null : text.slice(0, 500)
+        response.ok ? null : textResp.slice(0, 500)
       );
     }
 
-    res.status(response.status).type(contentType).send(text);
+    res.status(response.status).type(contentType).send(textResp);
   } catch (error) {
-    await recordRequestOnly(user, found.id, provider.id, body?.model || activeModel || 'unknown', `/v1/${proxyPath}`, 502, 0, String(error));
+    await recordRequestOnly(user, found.id, provider.id, requestedModel, requestPath, 502, 0, String(error));
     res.status(502).json({ error: 'Proxy failed', detail: String(error) });
+  }
+});
+
+app.get('/healthz', async (_req, res) => {
+  try {
+    await query('SELECT 1 AS ok');
+    res.json({ ok: true, service: 'api-trans', time: nowIso() });
+  } catch (error) {
+    res.status(503).json({ ok: false, error: String(error) });
   }
 });
 
