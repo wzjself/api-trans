@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { dataService } from "../services/dataService";
-import { Plus, Trash2, Copy, Check, FlaskConical, AlertTriangle } from "lucide-react";
+import { Plus, Trash2, Copy, Check, FlaskConical, AlertTriangle, RefreshCw } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
 interface ApiKey {
@@ -22,6 +22,8 @@ export const ApiKeyManager: React.FC = () => {
   const [testResult, setTestResult] = useState<Record<string, string>>({});
   const [pendingDelete, setPendingDelete] = useState<ApiKey | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+
+  const generateRandomKeyName = () => `key-${new Date().toISOString().slice(0, 10)}-${Math.random().toString(36).slice(2, 6)}`;
 
   const safeCopy = async (text: string) => {
     try {
@@ -47,6 +49,12 @@ export const ApiKeyManager: React.FC = () => {
   };
 
   useEffect(() => {
+    if (!newKeyName.trim()) {
+      setNewKeyName(generateRandomKeyName());
+    }
+  }, []);
+
+  useEffect(() => {
     if (!profile) return;
     const unsubscribe = dataService.subscribeApiKeys(profile.uid, (data) => {
       setKeys(data as ApiKey[]);
@@ -55,10 +63,11 @@ export const ApiKeyManager: React.FC = () => {
   }, [profile]);
 
   const createKey = async () => {
-    if (!profile || !newKeyName.trim()) return;
+    if (!profile) return;
+    const finalName = newKeyName.trim() || generateRandomKeyName();
     setIsCreating(true);
     try {
-      const created = await dataService.addApiKey(profile.uid, newKeyName.trim());
+      const created = await dataService.addApiKey(profile.uid, finalName);
       const normalized: ApiKey = {
         id: created.id,
         name: created.name,
@@ -67,7 +76,7 @@ export const ApiKeyManager: React.FC = () => {
         status: created.status || "active",
       };
       setKeys((prev) => [normalized, ...prev.filter((item) => item.id !== normalized.id)]);
-      setNewKeyName("");
+      setNewKeyName(generateRandomKeyName());
       const copied = await safeCopy(normalized.key);
       if (copied) {
         setCopiedId(normalized.id);
@@ -129,7 +138,10 @@ export const ApiKeyManager: React.FC = () => {
           <h2 className="text-xl font-semibold tracking-tight">API 密钥管理</h2>
           <div className="flex gap-2">
             <input type="text" placeholder="密钥名称" className="px-3 py-1.5 text-sm rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 focus:outline-none focus:ring-2 focus:ring-zinc-500 transition-all" value={newKeyName} onChange={(e) => setNewKeyName(e.target.value)} />
-            <button onClick={createKey} disabled={isCreating || !newKeyName.trim()} className="flex items-center gap-2 px-4 py-1.5 text-sm font-medium text-white bg-zinc-900 dark:bg-zinc-100 dark:text-zinc-900 rounded-lg hover:opacity-90 disabled:opacity-50 transition-all"><Plus className="w-4 h-4" />{isCreating ? "生成中..." : "新建密钥"}</button>
+            <button type="button" onClick={() => setNewKeyName(generateRandomKeyName())} className="px-3 py-1.5 text-sm rounded-lg border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-all" title="随机生成名称">
+              <RefreshCw className="w-4 h-4" />
+            </button>
+            <button onClick={createKey} disabled={isCreating} className="flex items-center gap-2 px-4 py-1.5 text-sm font-medium text-white bg-zinc-900 dark:bg-zinc-100 dark:text-zinc-900 rounded-lg hover:opacity-90 disabled:opacity-50 transition-all"><Plus className="w-4 h-4" />{isCreating ? "生成中..." : "新建密钥"}</button>
           </div>
         </div>
 

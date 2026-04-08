@@ -107,12 +107,14 @@ const ConsumeLogsTable: React.FC = () => {
 export const Dashboard: React.FC = () => {
   const { profile, refreshProfile } = useAuth();
   const [guideLink, setGuideLink] = useState("");
+  const [announcement, setAnnouncement] = useState("");
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
 
   useEffect(() => {
     const unsub = dataService.subscribeSettings((data) => {
       setGuideLink(data?.guideLink || "");
+      setAnnouncement(data?.announcement || "");
     });
     return () => unsub();
   }, []);
@@ -267,6 +269,16 @@ export const Dashboard: React.FC = () => {
               </a>
             </div>
             <div className="absolute -bottom-10 -right-10 w-40 h-40 bg-zinc-700/30 dark:bg-zinc-300/30 rounded-full blur-3xl" />
+          </section>
+
+          <section className="p-6 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/50 space-y-4">
+            <div className="space-y-1">
+              <h3 className="text-lg font-semibold tracking-tight">站点公告</h3>
+              <p className="text-xs text-zinc-500">此内容可在管理员后台编辑。</p>
+            </div>
+            <div className="text-sm text-zinc-700 dark:text-zinc-300 whitespace-pre-wrap break-words min-h-[72px]">
+              {announcement || '暂无公告'}
+            </div>
           </section>
         </div>
       </div>

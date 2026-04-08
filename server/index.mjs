@@ -298,12 +298,14 @@ async function ensureSchema() {
   if (!currentSettings) {
     await setSetting('system', {
       guideLink: '',
+      announcement: '',
       appBaseUrl: APP_BASE_URL,
       defaultModel: '',
     });
   } else {
     await setSetting('system', {
       guideLink: currentSettings.guideLink || '',
+      announcement: currentSettings.announcement || '',
       appBaseUrl: APP_BASE_URL || currentSettings.appBaseUrl || '',
       defaultModel: currentSettings.defaultModel || currentSettings.activeModel || '',
     });
@@ -641,12 +643,12 @@ app.get('/api/users/me/api-keys', authMiddleware, async (req, res) => {
 });
 
 app.post('/api/users/me/api-keys', authMiddleware, async (req, res) => {
-  const { name } = req.body || {};
-  if (!name) return res.status(400).json({ error: '名称必填' });
+  const requestedName = String(req.body?.name || '').trim();
+  const autoName = `key-${new Date().toISOString().slice(0, 10)}-${crypto.randomBytes(2).toString('hex')}`;
   const record = {
     id: randomId('key_'),
     uid: req.user.uid,
-    name,
+    name: requestedName || autoName,
     api_key: `sk-live-${crypto.randomBytes(18).toString('hex')}`,
   };
   await query(

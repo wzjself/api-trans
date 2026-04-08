@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { dataService } from "../services/dataService";
-import { Users, Key, Plus, Trash2, Shield, User as UserIcon, Check, Copy, Settings, Database, Save, RefreshCw, AlertTriangle } from "lucide-react";
+import { Users, Key, Plus, Trash2, Shield, User as UserIcon, Check, Copy, Settings, Database, Save, RefreshCw, AlertTriangle, Download, ChevronDown, ChevronUp } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { cn } from "../lib/utils";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
@@ -47,7 +47,7 @@ export const AdminPanel: React.FC = () => {
   const [pendingDeleteUser, setPendingDeleteUser] = useState<UserProfile | null>(null);
   const [isDeletingUser, setIsDeletingUser] = useState(false);
   const [newBalance, setNewBalance] = useState(0);
-  const [settings, setSettings] = useState({ guideLink: "" });
+  const [settings, setSettings] = useState({ guideLink: "", announcement: "" });
   const [isSavingSettings, setIsSavingSettings] = useState(false);
   const [providers, setProviders] = useState<ProviderConfig[]>([]);
   const [defaultModel, setDefaultModel] = useState("");
@@ -57,6 +57,13 @@ export const AdminPanel: React.FC = () => {
   const [isFetchingModels, setIsFetchingModels] = useState(false);
   const [platformSummary, setPlatformSummary] = useState({ totalUsers: 0, totalApiKeys: 0, totalRequests: 0, totalTokens: 0, todayTokens: 0 });
   const [platformTrend, setPlatformTrend] = useState<any[]>([]);
+  const [expandedCodes, setExpandedCodes] = useState<Record<string, boolean>>({});
+  const [lastGeneratedCodes, setLastGeneratedCodes] = useState<string[]>([]);
+
+  const shouldCollapseCode = (code: string) => code.length > 18;
+  const formatCodePreview = (code: string) => (shouldCollapseCode(code) ? `${code.slice(0, 10)}...${code.slice(-6)}` : code);
+  const toggleCodeExpanded = (code: string) => setExpandedCodes((prev) => ({ ...prev, [code]: !prev[code] }));
+  const generatedCodesText = useMemo(() => lastGeneratedCodes.join("\n"), [lastGeneratedCodes]);
 
   const safeCopy = async (text: string) => {
     try {
@@ -85,7 +92,7 @@ export const AdminPanel: React.FC = () => {
   const loadAdminData = () => {
     const unsubUsers = dataService.subscribeAllUsers((data) => setUsers(data as UserProfile[]));
     const unsubCodes = dataService.subscribeAllCodes((data) => setCodes(data as RedemptionCode[]));
-    const unsubSettings = dataService.subscribeSettings((data) => setSettings(data || { guideLink: "" }));
+    const unsubSettings = dataService.subscribeSettings((data) => setSettings(data || { guideLink: "", announcement: "" }));
     const unsubProviders = dataService.subscribeProviders((data) => {
       setProviders(data.providers || []);
       setDefaultModel(data.defaultModel || "");
@@ -145,6 +152,7 @@ export const AdminPanel: React.FC = () => {
         usedBy: item.usedBy || null,
       }));
       setCodes((prev) => [...normalized, ...prev.filter((item) => !normalized.some((n: any) => n.code === item.code))]);
+      setLastGeneratedCodes(normalized.map((item: any) => item.code));
       if (normalized.length === 1) {
         const copied = await safeCopy(normalized[0].code);
         setCopiedCode(copied ? normalized[0].code : null);
@@ -165,6 +173,19 @@ export const AdminPanel: React.FC = () => {
     if (!copied) return;
     setCopiedCode(code);
     setTimeout(() => setCopiedCode(null), 2000);
+  };
+
+  const exportGeneratedCodes = () => {
+    if (!lastGeneratedCodes.length) return;
+    const blob = new Blob([generatedCodesText], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `redeem-codes-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-")}.txt`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   const updateUserBalance = async () => {
@@ -271,6 +292,10 @@ export const AdminPanel: React.FC = () => {
             <label className="text-xs font-medium text-zinc-500 uppercase tracking-wider">使用指南链接</label>
             <input type="url" className="w-full px-3 py-2 text-sm rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900" value={settings.guideLink} onChange={(e) => setSettings({ ...settings, guideLink: e.target.value })} placeholder="https://..." />
           </div>
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-zinc-500 uppercase tracking-wider">公告内容</label>
+            <textarea className="w-full px-3 py-2 text-sm rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 min-h-[120px]" value={settings.announcement} onChange={(e) => setSettings({ ...settings, announcement: e.target.value })} placeholder="这里填写用户页展示的公告内容" />
+          </div>
           <button onClick={saveSettings} disabled={isSavingSettings} className="px-6 py-2 text-sm font-medium text-white bg-zinc-900 dark:bg-zinc-100 dark:text-zinc-900 rounded-xl">保存设置</button>
         </div>
       </div>
@@ -336,11 +361,17 @@ export const AdminPanel: React.FC = () => {
           <div className="space-y-1.5"><label className="text-xs font-medium text-zinc-500 uppercase tracking-wider">{newCode.type === 'permanent' ? '额度' : '每日额度'}</label><input type="number" className="w-full px-3 py-2 text-sm rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900" value={newCode.value} onChange={(e) => setNewCode({ ...newCode, value: parseInt(e.target.value || '0') })} /></div>
           {newCode.type !== "permanent" && <div className="space-y-1.5"><label className="text-xs font-medium text-zinc-500 uppercase tracking-wider">持续天数</label><input type="number" className="w-full px-3 py-2 text-sm rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900" value={newCode.durationDays} onChange={(e) => setNewCode({ ...newCode, durationDays: parseInt(e.target.value || '0') })} /></div>}
           <div className="space-y-1.5"><label className="text-xs font-medium text-zinc-500 uppercase tracking-wider">批量数量</label><input type="number" min="1" max="200" className="w-full px-3 py-2 text-sm rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900" value={newCode.count} onChange={(e) => setNewCode({ ...newCode, count: Math.max(1, Math.min(200, parseInt(e.target.value || '1'))) })} /></div>
-          <button onClick={generateCode} disabled={isGenerating} className="px-6 py-2 text-sm font-medium text-white bg-zinc-900 dark:bg-zinc-100 dark:text-zinc-900 rounded-xl">{isGenerating ? '生成中...' : `生成${newCode.count > 1 ? '兑换码' : '兑换码'}`}</button>
+          <button onClick={generateCode} disabled={isGenerating} className="px-6 py-2 text-sm font-medium text-white bg-zinc-900 dark:bg-zinc-100 dark:text-zinc-900 rounded-xl">{isGenerating ? '生成中...' : '生成兑换码'}</button>
+          {lastGeneratedCodes.length > 1 && <button type="button" onClick={exportGeneratedCodes} className="px-6 py-2 text-sm font-medium rounded-xl border border-zinc-200 dark:border-zinc-800 flex items-center gap-2"><Download className="w-4 h-4" />导出 TXT</button>}
         </div>
+        {lastGeneratedCodes.length > 1 && <div className="text-xs text-zinc-500">最近批量生成 {lastGeneratedCodes.length} 个兑换码，可直接导出 txt，一行一个兑换码。</div>}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           <AnimatePresence mode="popLayout">
-            {codes.map((code) => <motion.div key={code.code} layout initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className={cn("p-4 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/50 flex items-center justify-between group", code.isUsed && "opacity-50")}><div className="space-y-1"><div className="flex items-center gap-2"><span className="font-mono font-bold text-sm">{code.code}</span>{code.isUsed && <span className="px-2 py-0.5 text-[8px] font-bold uppercase tracking-wider rounded-full bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">已使用</span>}</div><div className="text-[10px] text-zinc-500 uppercase tracking-wider font-medium">{code.type} • {code.value.toLocaleString()} Tokens</div><div className="text-[10px] text-zinc-400">{code.usedBy ? `使用者: ${code.usedBy}` : '未使用'}</div></div><div className="flex gap-1"><button type="button" onClick={() => copyCode(code.code)} className="p-1.5 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors">{copiedCode === code.code ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}</button><button type="button" onClick={() => deleteCode(code.code)} className="p-1.5 text-zinc-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"><Trash2 className="w-3.5 h-3.5" /></button></div></motion.div>)}
+            {codes.map((code) => {
+              const expanded = Boolean(expandedCodes[code.code]);
+              const collapsed = shouldCollapseCode(code.code) && !expanded;
+              return <motion.div key={code.code} layout initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className={cn("p-4 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/50 flex items-start justify-between gap-3 group", code.isUsed && "opacity-50")}><div className="space-y-1 min-w-0 flex-1"><div className="flex items-start gap-2"><span className="font-mono font-bold text-sm break-all">{collapsed ? formatCodePreview(code.code) : code.code}</span>{code.isUsed && <span className="px-2 py-0.5 text-[8px] font-bold uppercase tracking-wider rounded-full bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">已使用</span>}</div>{shouldCollapseCode(code.code) && <button type="button" onClick={() => toggleCodeExpanded(code.code)} className="text-[11px] text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 inline-flex items-center gap-1">{expanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}{expanded ? '收起' : '展开'}</button>}<div className="text-[10px] text-zinc-500 uppercase tracking-wider font-medium">{code.type} • {code.value.toLocaleString()} Tokens</div><div className="text-[10px] text-zinc-400">{code.usedBy ? `使用者: ${code.usedBy}` : '未使用'}</div></div><div className="flex gap-1 shrink-0"><button type="button" onClick={() => copyCode(code.code)} className="p-1.5 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors">{copiedCode === code.code ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}</button><button type="button" onClick={() => deleteCode(code.code)} className="p-1.5 text-zinc-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"><Trash2 className="w-3.5 h-3.5" /></button></div></motion.div>;
+            })}
           </AnimatePresence>
         </div>
       </div>
