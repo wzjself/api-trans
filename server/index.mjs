@@ -773,7 +773,7 @@ app.post('/api/redeem', authMiddleware, async (req, res) => {
         `UPDATE users
          SET quota_type = :quota_type,
              daily_quota = :daily_quota,
-             quota_expires_at = DATE_ADD(quota_expires_at, INTERVAL :duration_days DAY)
+             quota_expires_at = TIMESTAMP(DATE(DATE_ADD(quota_expires_at, INTERVAL :duration_days DAY)), '23:59:59')
          WHERE uid = :uid`,
         {
           quota_type: mergedQuotaType,
@@ -785,7 +785,7 @@ app.post('/api/redeem', authMiddleware, async (req, res) => {
     } else {
       await query(
         `UPDATE users SET quota_type = :quota_type, daily_quota = :daily_quota,
-         quota_expires_at = DATE_ADD(NOW(), INTERVAL :duration_days DAY) WHERE uid = :uid`,
+         quota_expires_at = TIMESTAMP(DATE(DATE_ADD(NOW(), INTERVAL :duration_days DAY)), '23:59:59') WHERE uid = :uid`,
         {
           quota_type: item.type,
           daily_quota: Number(item.value || 0),
