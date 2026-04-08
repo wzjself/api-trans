@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { ApiKeyManager } from "./ApiKeyManager";
 import { UsageChart } from "./UsageChart";
 import { Redemption } from "./Redemption";
-import { Globe, Terminal, Copy, Check, Activity, Clock, RefreshCw, Wallet } from "lucide-react";
+import { Globe, Terminal, Copy, Check, Activity, Clock, RefreshCw, Wallet, CalendarClock } from "lucide-react";
 import { format } from "date-fns";
 
 const API_BASE_URL = import.meta.env.VITE_PUBLIC_API_BASE || window.location.origin;
@@ -183,6 +183,13 @@ export const Dashboard: React.FC = () => {
             <Wallet className="w-4 h-4" />
             当前余额：<span className="font-mono text-zinc-900 dark:text-zinc-100">{Number(profile?.balance || 0).toLocaleString()}</span>
           </div>
+          {profile?.quotaType && profile.quotaType !== 'none' && profile?.quotaExpiresAt && (
+            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/50">
+              <CalendarClock className="w-4 h-4" />
+              {profile.quotaType === 'daily' ? '天卡到期：' : '月卡到期：'}
+              <span className="font-mono text-zinc-900 dark:text-zinc-100">{format(new Date(profile.quotaExpiresAt), 'yyyy-MM-dd HH:mm:ss')}</span>
+            </div>
+          )}
           <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/50">
             <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
             最近同步：<span className="font-mono text-zinc-900 dark:text-zinc-100">{lastSyncedAt ? format(lastSyncedAt, 'MM-dd HH:mm:ss') : '未同步'}</span>

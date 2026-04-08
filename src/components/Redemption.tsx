@@ -35,6 +35,9 @@ export const Redemption: React.FC = () => {
         <h3>兑换码充值</h3>
       </div>
       <p className="text-sm text-zinc-500">输入您的兑换码以获取额度或激活天卡/月卡。</p>
+      <div className="p-3 rounded-xl border border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/40 dark:bg-amber-900/10 dark:text-amber-300 text-xs leading-5">
+        说明：天卡/月卡叠加时，只会顺延有效期，不会叠加或重置每日额度；每日额度仍按当前卡档位计算，并在每天 0 点刷新。
+      </div>
       
       <div className="flex gap-2">
         <input
