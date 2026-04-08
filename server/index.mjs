@@ -687,12 +687,16 @@ app.get('/api/admin/platform-summary', authMiddleware, adminMiddleware, async (_
   const [keyRow] = await query('SELECT COUNT(*) AS totalApiKeys FROM api_keys WHERE status = "active"');
   const [usageRow] = await query('SELECT COUNT(*) AS totalRequests, COALESCE(SUM(tokens),0) AS totalTokens FROM usage_logs');
   const [todayRow] = await query('SELECT COALESCE(SUM(tokens),0) AS todayTokens FROM usage_logs WHERE DATE(created_at) = CURRENT_DATE()');
+  const [rpmRow] = await query('SELECT COUNT(*) AS rpm FROM usage_logs WHERE created_at >= DATE_SUB(NOW(), INTERVAL 1 MINUTE)');
+  const [tpmRow] = await query('SELECT COALESCE(SUM(tokens),0) AS tpm FROM usage_logs WHERE created_at >= DATE_SUB(NOW(), INTERVAL 1 MINUTE)');
   res.json({
     totalUsers: Number(userRow?.totalUsers || 0),
     totalApiKeys: Number(keyRow?.totalApiKeys || 0),
     totalRequests: Number(usageRow?.totalRequests || 0),
     totalTokens: Number(usageRow?.totalTokens || 0),
     todayTokens: Number(todayRow?.todayTokens || 0),
+    rpm: Number(rpmRow?.rpm || 0),
+    tpm: Number(tpmRow?.tpm || 0),
   });
 });
 
@@ -757,7 +761,10 @@ app.post('/api/redeem', authMiddleware, async (req, res) => {
   res.json({ ok: true, user: sanitizeUser(fresh) });
 });
 
-app.get('/api/admin/users', authMiddleware, adminMiddleware, async (_req, res) => {
+app.get('/api/admin/users', authMiddleware, adminMiddleware, async (req, res) => {
+  const quotaType = String(req.query.quotaType || '').trim();
+  const allowedQuotaTypes = new Set(['daily', 'monthly', 'permanent', 'none']);
+  const whereClause = allowedQuotaTypes.has(quotaType) ? 'WHERE u.quota_type = :quotaType' : '';
   const rows = await query(`
     SELECT
       u.uid,
@@ -774,9 +781,10 @@ app.get('/api/admin/users', authMiddleware, adminMiddleware, async (_req, res) =
     FROM users u
     LEFT JOIN usage_logs ul ON ul.uid = u.uid
     LEFT JOIN api_keys ak ON ak.uid = u.uid AND ak.status = 'active'
+    ${whereClause}
     GROUP BY u.uid, u.email, u.role, u.balance, u.quota_type, u.daily_quota, u.quota_expires_at, u.created_at, u.updated_at
     ORDER BY u.created_at DESC
-  `);
+  `, allowedQuotaTypes.has(quotaType) ? { quotaType } : {});
   res.json(rows.map((row) => ({
     ...row,
     balance: Number(row.balance || 0),

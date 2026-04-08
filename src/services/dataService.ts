@@ -59,9 +59,10 @@ export const dataService = {
     return apiClient.post('/api/redeem', { code });
   },
 
-  subscribeAllUsers: (callback: (users: any[]) => void) => {
+  subscribeAllUsers: (callback: (users: any[]) => void, quotaType?: string) => {
     let cancelled = false;
-    const run = () => apiClient.get('/api/admin/users').then((data) => {
+    const qs = quotaType ? `?quotaType=${encodeURIComponent(quotaType)}` : '';
+    const run = () => apiClient.get(`/api/admin/users${qs}`).then((data) => {
       if (!cancelled) callback(data as any[]);
     }).catch(console.error);
     run();

@@ -28,6 +28,14 @@ interface UserProfile {
   createdAt?: any;
 }
 
+const USER_FILTERS = [
+  { key: "all", label: "全部用户" },
+  { key: "daily", label: "日卡用户" },
+  { key: "monthly", label: "月卡用户" },
+  { key: "permanent", label: "永久额度用户" },
+  { key: "none", label: "无卡用户" },
+] as const;
+
 interface ProviderConfig {
   id: string;
   name: string;
@@ -55,10 +63,11 @@ export const AdminPanel: React.FC = () => {
   const [providerModelsInput, setProviderModelsInput] = useState("");
   const [isSavingProvider, setIsSavingProvider] = useState(false);
   const [isFetchingModels, setIsFetchingModels] = useState(false);
-  const [platformSummary, setPlatformSummary] = useState({ totalUsers: 0, totalApiKeys: 0, totalRequests: 0, totalTokens: 0, todayTokens: 0 });
+  const [platformSummary, setPlatformSummary] = useState({ totalUsers: 0, totalApiKeys: 0, totalRequests: 0, totalTokens: 0, todayTokens: 0, rpm: 0, tpm: 0 });
   const [platformTrend, setPlatformTrend] = useState<any[]>([]);
   const [expandedCodes, setExpandedCodes] = useState<Record<string, boolean>>({});
   const [lastGeneratedCodes, setLastGeneratedCodes] = useState<string[]>([]);
+  const [userFilter, setUserFilter] = useState<(typeof USER_FILTERS)[number]["key"]>("all");
 
   const shouldCollapseCode = (code: string) => code.length > 18;
   const formatCodePreview = (code: string) => (shouldCollapseCode(code) ? `${code.slice(0, 10)}...${code.slice(-6)}` : code);
@@ -90,7 +99,8 @@ export const AdminPanel: React.FC = () => {
   };
 
   const loadAdminData = () => {
-    const unsubUsers = dataService.subscribeAllUsers((data) => setUsers(data as UserProfile[]));
+    const quotaType = userFilter === 'all' ? '' : userFilter;
+    const unsubUsers = dataService.subscribeAllUsers((data) => setUsers(data as UserProfile[]), quotaType);
     const unsubCodes = dataService.subscribeAllCodes((data) => setCodes(data as RedemptionCode[]));
     const unsubSettings = dataService.subscribeSettings((data) => setSettings(data || { guideLink: "", announcement: "" }));
     const unsubProviders = dataService.subscribeProviders((data) => {
@@ -98,7 +108,7 @@ export const AdminPanel: React.FC = () => {
       setDefaultModel(data.defaultModel || "");
     });
     const unsubPlatformSummary = dataService.subscribePlatformSummary((data) => {
-      setPlatformSummary(data || { totalUsers: 0, totalApiKeys: 0, totalRequests: 0, totalTokens: 0, todayTokens: 0 });
+      setPlatformSummary(data || { totalUsers: 0, totalApiKeys: 0, totalRequests: 0, totalTokens: 0, todayTokens: 0, rpm: 0, tpm: 0 });
     });
     const unsubPlatformTrend = dataService.subscribePlatformTrend((data) => {
       setPlatformTrend(data || []);
@@ -113,7 +123,7 @@ export const AdminPanel: React.FC = () => {
     };
   };
 
-  useEffect(() => loadAdminData(), []);
+  useEffect(() => loadAdminData(), [userFilter]);
   useEffect(() => {
     setNewCode((prev) => {
       if (prev.type === 'permanent') return { ...prev, value: prev.value || 1000, durationDays: 0 };
@@ -254,12 +264,14 @@ export const AdminPanel: React.FC = () => {
 
   return (
     <div className="space-y-12 pb-20">
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-7 gap-4">
         <div className="p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/50"><div className="text-xs text-zinc-500">平台总用户</div><div className="text-2xl font-bold tracking-tight">{platformSummary.totalUsers.toLocaleString()}</div></div>
         <div className="p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/50"><div className="text-xs text-zinc-500">活跃密钥</div><div className="text-2xl font-bold tracking-tight">{platformSummary.totalApiKeys.toLocaleString()}</div></div>
         <div className="p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/50"><div className="text-xs text-zinc-500">总请求数</div><div className="text-2xl font-bold tracking-tight">{platformSummary.totalRequests.toLocaleString()}</div></div>
         <div className="p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/50"><div className="text-xs text-zinc-500">平台总消耗</div><div className="text-2xl font-bold tracking-tight">{platformSummary.totalTokens.toLocaleString()}</div></div>
         <div className="p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/50"><div className="text-xs text-zinc-500">今日消耗</div><div className="text-2xl font-bold tracking-tight">{platformSummary.todayTokens.toLocaleString()}</div></div>
+        <div className="p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/50"><div className="text-xs text-zinc-500">实时 RPM</div><div className="text-2xl font-bold tracking-tight">{Number(platformSummary.rpm || 0).toLocaleString()}</div><div className="text-[10px] text-zinc-400 mt-1">最近 1 分钟请求数</div></div>
+        <div className="p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/50"><div className="text-xs text-zinc-500">实时 TPM</div><div className="text-2xl font-bold tracking-tight">{Number(platformSummary.tpm || 0).toLocaleString()}</div><div className="text-[10px] text-zinc-400 mt-1">最近 1 分钟 Token</div></div>
       </div>
 
       <div className="p-6 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/50 space-y-6">
@@ -377,7 +389,26 @@ export const AdminPanel: React.FC = () => {
       </div>
 
       <div className="space-y-6">
-        <div className="flex items-center gap-2 text-xl font-semibold tracking-tight"><Users className="w-5 h-5 text-zinc-500" /><h2>用户管理</h2></div>
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <div className="flex items-center gap-2 text-xl font-semibold tracking-tight"><Users className="w-5 h-5 text-zinc-500" /><h2>用户管理</h2></div>
+          <div className="flex flex-wrap gap-2">
+            {USER_FILTERS.map((filter) => (
+              <button
+                key={filter.key}
+                type="button"
+                onClick={() => setUserFilter(filter.key)}
+                className={cn(
+                  "px-3 py-1.5 text-xs rounded-full border transition-all",
+                  userFilter === filter.key
+                    ? "bg-zinc-900 text-white border-zinc-900 dark:bg-zinc-100 dark:text-zinc-900 dark:border-zinc-100"
+                    : "border-zinc-200 dark:border-zinc-800 text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
+                )}
+              >
+                {filter.label}
+              </button>
+            ))}
+          </div>
+        </div>
         <div className="overflow-auto rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/50">
           <table className="w-full text-left text-sm min-w-[980px]">
             <thead><tr className="border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900/50"><th className="px-6 py-3 font-medium text-zinc-500">用户</th><th className="px-6 py-3 font-medium text-zinc-500">角色</th><th className="px-6 py-3 font-medium text-zinc-500">永久额度</th><th className="px-6 py-3 font-medium text-zinc-500">卡类型</th><th className="px-6 py-3 font-medium text-zinc-500">每日额度</th><th className="px-6 py-3 font-medium text-zinc-500">累计消耗</th><th className="px-6 py-3 font-medium text-zinc-500">活跃密钥</th><th className="px-6 py-3 font-medium text-zinc-500">注册时间</th><th className="px-6 py-3 font-medium text-zinc-500 text-right">操作</th></tr></thead>
