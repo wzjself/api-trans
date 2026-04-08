@@ -370,7 +370,8 @@ async function getQuotaStatus(user) {
     }
     const todayRows = await query(
       `SELECT COALESCE(SUM(tokens),0) AS total FROM usage_logs
-       WHERE uid = :uid AND DATE(created_at) = CURRENT_DATE()`,
+       WHERE uid = :uid
+         AND DATE(CONVERT_TZ(created_at, '+00:00', '+08:00')) = DATE(UTC_TIMESTAMP() + INTERVAL 8 HOUR)`,
       { uid: user.uid }
     );
     const usedToday = Number(todayRows[0]?.total || 0);
@@ -701,7 +702,9 @@ app.get('/api/admin/platform-summary', authMiddleware, adminMiddleware, async (_
   const [userRow] = await query('SELECT COUNT(*) AS totalUsers FROM users');
   const [keyRow] = await query('SELECT COUNT(*) AS totalApiKeys FROM api_keys WHERE status = "active"');
   const [usageRow] = await query('SELECT COUNT(*) AS totalRequests, COALESCE(SUM(tokens),0) AS totalTokens FROM usage_logs');
-  const [todayRow] = await query('SELECT COALESCE(SUM(tokens),0) AS todayTokens FROM usage_logs WHERE DATE(created_at) = CURRENT_DATE()');
+  const [todayRow] = await query(`SELECT COALESCE(SUM(tokens),0) AS todayTokens
+    FROM usage_logs
+    WHERE DATE(CONVERT_TZ(created_at, '+00:00', '+08:00')) = DATE(UTC_TIMESTAMP() + INTERVAL 8 HOUR)`);
   const [rpmRow] = await query('SELECT COUNT(*) AS rpm FROM usage_logs WHERE created_at >= DATE_SUB(NOW(), INTERVAL 1 MINUTE)');
   const [tpmRow] = await query('SELECT COALESCE(SUM(tokens),0) AS tpm FROM usage_logs WHERE created_at >= DATE_SUB(NOW(), INTERVAL 1 MINUTE)');
   res.json({
@@ -718,16 +721,16 @@ app.get('/api/admin/platform-summary', authMiddleware, adminMiddleware, async (_
 app.get('/api/admin/platform-trend', authMiddleware, adminMiddleware, async (_req, res) => {
   const rows = await query(`
     WITH RECURSIVE days AS (
-      SELECT DATE_SUB(CURRENT_DATE(), INTERVAL 13 DAY) AS d
+      SELECT DATE_SUB(DATE(UTC_TIMESTAMP() + INTERVAL 8 HOUR), INTERVAL 13 DAY) AS d
       UNION ALL
-      SELECT DATE_ADD(d, INTERVAL 1 DAY) FROM days WHERE d < CURRENT_DATE()
+      SELECT DATE_ADD(d, INTERVAL 1 DAY) FROM days WHERE d < DATE(UTC_TIMESTAMP() + INTERVAL 8 HOUR)
     )
     SELECT
       DATE_FORMAT(days.d, '%m-%d') AS day,
       COALESCE(COUNT(ul.id), 0) AS requests,
       COALESCE(SUM(ul.tokens), 0) AS tokens
     FROM days
-    LEFT JOIN usage_logs ul ON DATE(ul.created_at) = days.d
+    LEFT JOIN usage_logs ul ON DATE(CONVERT_TZ(ul.created_at, '+00:00', '+08:00')) = days.d
     GROUP BY days.d
     ORDER BY days.d ASC
   `);

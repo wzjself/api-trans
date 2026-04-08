@@ -3,6 +3,7 @@ services:
     build: .
     container_name: api-trans-blue
     environment: &api_trans_env
+      TZ: Asia/Shanghai
       PORT: 3000
       APP_BASE_URL: http://64.23.161.180:18080
       VITE_PUBLIC_API_BASE: http://64.23.161.180:18080
@@ -39,6 +40,8 @@ services:
     container_name: api-trans-gateway
     depends_on:
       - api-trans-blue
+    environment:
+      TZ: Asia/Shanghai
     ports:
       - "18080:80"
     volumes:
