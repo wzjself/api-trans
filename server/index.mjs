@@ -757,16 +757,39 @@ app.post('/api/redeem', authMiddleware, async (req, res) => {
   if (item.type === 'permanent') {
     await query('UPDATE users SET balance = balance + :value WHERE uid = :uid', { value: Number(item.value || 0), uid: req.user.uid });
   } else {
-    await query(
-      `UPDATE users SET quota_type = :quota_type, daily_quota = :daily_quota,
-       quota_expires_at = DATE_ADD(NOW(), INTERVAL :duration_days DAY) WHERE uid = :uid`,
-      {
-        quota_type: item.type,
-        daily_quota: Number(item.value || 0),
-        duration_days: Number(item.duration_days || 30),
-        uid: req.user.uid,
-      }
-    );
+    const currentUser = await getUserByUid(req.user.uid);
+    const hasActiveQuotaCard = currentUser
+      && ['daily', 'monthly'].includes(String(currentUser.quota_type || ''))
+      && currentUser.quota_expires_at
+      && new Date(currentUser.quota_expires_at).getTime() > Date.now();
+
+    if (hasActiveQuotaCard) {
+      const mergedQuotaType = (currentUser.quota_type === 'monthly' || item.type === 'monthly') ? 'monthly' : 'daily';
+      await query(
+        `UPDATE users
+         SET quota_type = :quota_type,
+             daily_quota = COALESCE(daily_quota, 0) + :daily_quota,
+             quota_expires_at = DATE_ADD(quota_expires_at, INTERVAL :duration_days DAY)
+         WHERE uid = :uid`,
+        {
+          quota_type: mergedQuotaType,
+          daily_quota: Number(item.value || 0),
+          duration_days: Number(item.duration_days || 30),
+          uid: req.user.uid,
+        }
+      );
+    } else {
+      await query(
+        `UPDATE users SET quota_type = :quota_type, daily_quota = :daily_quota,
+         quota_expires_at = DATE_ADD(NOW(), INTERVAL :duration_days DAY) WHERE uid = :uid`,
+        {
+          quota_type: item.type,
+          daily_quota: Number(item.value || 0),
+          duration_days: Number(item.duration_days || 30),
+          uid: req.user.uid,
+        }
+      );
+    }
   }
   await query(
     'UPDATE redemption_codes SET is_used = 1, used_by = :uid, used_at = NOW() WHERE code = :code',
