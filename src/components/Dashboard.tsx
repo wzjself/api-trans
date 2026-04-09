@@ -5,97 +5,46 @@ import { useEffect, useState } from "react";
 import { ApiKeyManager } from "./ApiKeyManager";
 import { UsageChart } from "./UsageChart";
 import { Redemption } from "./Redemption";
-import { Globe, Terminal, Copy, Check, Activity, Clock, RefreshCw, Wallet, CalendarClock } from "lucide-react";
+import { Globe, Terminal, Copy, Check, Activity, RefreshCw, Wallet, CalendarClock } from "lucide-react";
 import { format } from "date-fns";
 
 const API_BASE_URL = import.meta.env.VITE_PUBLIC_API_BASE || window.location.origin;
 const OPENAI_BASE_URL = `${API_BASE_URL.replace(/\/$/, "")}/v1`;
 
-const RecentUsageTable: React.FC = () => {
-  const { profile } = useAuth();
+const UsageRecordsTable: React.FC = () => {
   const [logs, setLogs] = useState<any[]>([]);
 
   useEffect(() => {
-    if (!profile) return;
-    const unsubscribe = dataService.subscribeLogs(profile.uid, (data) => {
-      setLogs(data);
-    }, 10);
-    return () => unsubscribe();
-  }, [profile]);
-
-  return (
-    <div className="overflow-hidden rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/50">
-      <table className="w-full text-left text-sm">
-        <thead>
-          <tr className="border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900/50">
-            <th className="px-6 py-3 font-medium text-zinc-500">时间</th>
-            <th className="px-6 py-3 font-medium text-zinc-500">模型</th>
-            <th className="px-6 py-3 font-medium text-zinc-500 text-right">Tokens</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-zinc-200 dark:divide-zinc-800">
-          {logs.map((log) => (
-            <tr key={log.id} className="group hover:bg-zinc-50/50 dark:hover:bg-zinc-900/30 transition-colors">
-              <td className="px-6 py-4 text-zinc-500 flex items-center gap-2">
-                <Clock className="w-3 h-3" />
-                {log.timestamp ? format(log.timestamp.toDate ? log.timestamp.toDate() : new Date(log.timestamp), "MM-dd HH:mm") : "刚刚"}
-              </td>
-              <td className="px-6 py-4 font-medium">{log.model || "未知"}</td>
-              <td className="px-6 py-4 text-right font-mono text-xs text-zinc-600 dark:text-zinc-400">
-                {log.tokens.toLocaleString()}
-              </td>
-            </tr>
-          ))}
-          {logs.length === 0 && (
-            <tr>
-              <td colSpan={3} className="px-6 py-10 text-center text-zinc-400">
-                暂无使用记录
-              </td>
-            </tr>
-          )}
-        </tbody>
-      </table>
-    </div>
-  );
-};
-
-const ConsumeLogsTable: React.FC = () => {
-  const [logs, setLogs] = useState<any[]>([]);
-  useEffect(() => {
-    const unsub = dataService.subscribeConsumeLogs((data) => setLogs(data || []), 10);
+    const unsub = dataService.subscribeConsumeLogs((data) => setLogs(data || []), 20);
     return () => unsub();
   }, []);
 
   return (
     <div className="overflow-hidden rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/50 overflow-x-auto">
-      <table className="w-full text-left text-sm min-w-[860px]">
+      <table className="w-full text-left text-sm min-w-[720px]">
         <thead>
           <tr className="border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900/50">
             <th className="px-6 py-3 font-medium text-zinc-500">时间</th>
-            <th className="px-6 py-3 font-medium text-zinc-500">路径</th>
             <th className="px-6 py-3 font-medium text-zinc-500">模型</th>
-            <th className="px-6 py-3 font-medium text-zinc-500">状态</th>
             <th className="px-6 py-3 font-medium text-zinc-500 text-right">额度</th>
-            <th className="px-6 py-3 font-medium text-zinc-500 text-right">Tokens</th>
+            <th className="px-6 py-3 font-medium text-zinc-500">状态</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-zinc-200 dark:divide-zinc-800">
           {logs.map((log) => (
             <tr key={log.id} className="hover:bg-zinc-50/50 dark:hover:bg-zinc-900/30 transition-colors">
               <td className="px-6 py-4 text-zinc-500">{log.createdAt ? format(new Date(log.createdAt), 'MM-dd HH:mm:ss') : '-'}</td>
-              <td className="px-6 py-4 font-mono text-xs">{log.requestPath || '-'}</td>
-              <td className="px-6 py-4">{log.model || '-'}</td>
+              <td className="px-6 py-4 font-medium">{log.model || '-'}</td>
+              <td className="px-6 py-4 text-right font-mono text-xs">{Number(log.consumedQuota || 0).toLocaleString()}</td>
               <td className="px-6 py-4">
                 <span className={log.success ? 'text-emerald-600' : 'text-red-500'}>{log.success ? `成功 (${log.statusCode})` : `失败 (${log.statusCode})`}</span>
                 {!log.success && log.errorMessage && <div className="text-xs text-zinc-400 mt-1 max-w-[260px] truncate">{log.errorMessage}</div>}
               </td>
-              <td className="px-6 py-4 text-right font-mono text-xs">{Number(log.consumedQuota || 0).toLocaleString()}</td>
-              <td className="px-6 py-4 text-right font-mono text-xs">{Number(log.totalTokens || 0).toLocaleString()}</td>
             </tr>
           ))}
           {logs.length === 0 && (
             <tr>
-              <td colSpan={6} className="px-6 py-10 text-center text-zinc-400">暂无消费日志</td>
+              <td colSpan={4} className="px-6 py-10 text-center text-zinc-400">暂无使用记录</td>
             </tr>
           )}
         </tbody>
@@ -241,17 +190,9 @@ export const Dashboard: React.FC = () => {
           <section className="space-y-6">
             <div className="flex items-center gap-2 text-xl font-semibold tracking-tight">
               <Activity className="w-5 h-5 text-zinc-500" />
-              <h2>最近使用记录</h2>
+              <h2>使用记录</h2>
             </div>
-            <RecentUsageTable />
-          </section>
-
-          <section className="space-y-6">
-            <div className="flex items-center gap-2 text-xl font-semibold tracking-tight">
-              <Activity className="w-5 h-5 text-zinc-500" />
-              <h2>消费日志明细</h2>
-            </div>
-            <ConsumeLogsTable />
+            <UsageRecordsTable />
           </section>
         </div>
 
