@@ -41,10 +41,34 @@ export const dataService = {
     return () => { cancelled = true; window.clearInterval(timer); };
   },
 
-  subscribeConsumeLogs: (callback: (logs: any[]) => void, limitCount?: number) => {
+  subscribeConsumeLogs: (callback: (logs: any[]) => void, limitCount?: number, offsetCount?: number) => {
+    let cancelled = false;
+    const params = new URLSearchParams();
+    if (limitCount) params.set('limit', String(limitCount));
+    if (offsetCount) params.set('offset', String(offsetCount));
+    const qs = params.toString() ? `?${params.toString()}` : '';
+    const run = () => apiClient.get(`/api/users/me/consume-logs${qs}`).then((data: any[]) => {
+      if (!cancelled) callback(data);
+    }).catch(console.error);
+    run();
+    const timer = offsetCount && offsetCount > 0 ? null : window.setInterval(run, POLL_FAST);
+    return () => { cancelled = true; if (timer) window.clearInterval(timer); };
+  },
+
+  subscribeUsageRecords: (callback: (logs: any[]) => void, limitCount?: number) => {
     let cancelled = false;
     const qs = limitCount ? `?limit=${limitCount}` : '';
-    const run = () => apiClient.get(`/api/users/me/consume-logs${qs}`).then((data: any[]) => {
+    const run = () => apiClient.get(`/api/users/me/records${qs}`).then((data: any[]) => {
+      if (!cancelled) callback(data);
+    }).catch(console.error);
+    run();
+    const timer = window.setInterval(run, POLL_FAST);
+    return () => { cancelled = true; window.clearInterval(timer); };
+  },
+
+  subscribeUserUsageTrend: (view: 'daily' | 'hourly', callback: (trend: any[]) => void) => {
+    let cancelled = false;
+    const run = () => apiClient.get(`/api/users/me/usage-trend?view=${encodeURIComponent(view)}`).then((data: any[]) => {
       if (!cancelled) callback(data);
     }).catch(console.error);
     run();

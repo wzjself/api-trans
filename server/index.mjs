@@ -705,12 +705,74 @@ app.get('/api/users/me/logs', authMiddleware, async (req, res) => {
 
 app.get('/api/users/me/consume-logs', authMiddleware, async (req, res) => {
   const limit = Number(req.query.limit || 50);
+  const offset = Number(req.query.offset || 0);
   const rows = await query(
     `SELECT id, model, request_path AS requestPath, prompt_tokens AS promptTokens, completion_tokens AS completionTokens, total_tokens AS totalTokens, consumed_quota AS consumedQuota, status_code AS statusCode, success, error_message AS errorMessage, created_at AS createdAt
+     FROM consume_logs WHERE uid = :uid ORDER BY created_at DESC LIMIT ${Math.min(limit, 500)} OFFSET ${Math.max(offset, 0)}`,
+    { uid: req.user.uid }
+  );
+  res.json(rows);
+});
+
+app.get('/api/users/me/records', authMiddleware, async (req, res) => {
+  const limit = Number(req.query.limit || 100);
+  const rows = await query(
+    `SELECT id, model, consumed_quota AS consumedQuota, status_code AS statusCode, success, error_message AS errorMessage, created_at AS createdAt
      FROM consume_logs WHERE uid = :uid ORDER BY created_at DESC LIMIT ${Math.min(limit, 500)}`,
     { uid: req.user.uid }
   );
   res.json(rows);
+});
+
+app.get('/api/users/me/usage-trend', authMiddleware, async (req, res) => {
+  const view = String(req.query.view || 'daily');
+
+  if (view === 'hourly') {
+    const rows = await query(`
+      WITH RECURSIVE hours AS (
+        SELECT DATE_FORMAT(DATE_SUB(DATE_FORMAT(UTC_TIMESTAMP() + INTERVAL 8 HOUR, '%Y-%m-%d %H:00:00'), INTERVAL 23 HOUR), '%Y-%m-%d %H:00:00') AS h
+        UNION ALL
+        SELECT DATE_FORMAT(DATE_ADD(h, INTERVAL 1 HOUR), '%Y-%m-%d %H:00:00') FROM hours
+        WHERE h < DATE_FORMAT(UTC_TIMESTAMP() + INTERVAL 8 HOUR, '%Y-%m-%d %H:00:00')
+      )
+      SELECT
+        DATE_FORMAT(hours.h, '%H:00') AS name,
+        COALESCE(SUM(ul.tokens), 0) AS tokens
+      FROM hours
+      LEFT JOIN usage_logs ul
+        ON DATE_FORMAT(CONVERT_TZ(ul.created_at, '+00:00', '+08:00'), '%Y-%m-%d %H:00:00') = hours.h
+       AND ul.uid = :uid
+      GROUP BY hours.h
+      ORDER BY hours.h ASC
+    `, { uid: req.user.uid });
+
+    return res.json(rows.map((row) => ({
+      name: row.name,
+      tokens: Number(row.tokens || 0),
+    })));
+  }
+
+  const rows = await query(`
+    WITH RECURSIVE days AS (
+      SELECT DATE_SUB(DATE(UTC_TIMESTAMP() + INTERVAL 8 HOUR), INTERVAL 14 DAY) AS d
+      UNION ALL
+      SELECT DATE_ADD(d, INTERVAL 1 DAY) FROM days WHERE d < DATE(UTC_TIMESTAMP() + INTERVAL 8 HOUR)
+    )
+    SELECT
+      DATE_FORMAT(days.d, '%m-%d') AS name,
+      COALESCE(SUM(ul.tokens), 0) AS tokens
+    FROM days
+    LEFT JOIN usage_logs ul
+      ON DATE(CONVERT_TZ(ul.created_at, '+00:00', '+08:00')) = days.d
+     AND ul.uid = :uid
+    GROUP BY days.d
+    ORDER BY days.d ASC
+  `, { uid: req.user.uid });
+
+  res.json(rows.map((row) => ({
+    name: row.name,
+    tokens: Number(row.tokens || 0),
+  })));
 });
 
 app.get('/api/admin/platform-summary', authMiddleware, adminMiddleware, async (_req, res) => {

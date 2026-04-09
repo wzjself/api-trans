@@ -2,68 +2,25 @@ import React, { useState, useEffect, useMemo } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { dataService } from "../services/dataService";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from "recharts";
-import { format, startOfDay, startOfHour, eachDayOfInterval, eachHourOfInterval, subDays, subHours, isSameDay, isSameHour } from "date-fns";
 import { Activity, Zap, PieChart } from "lucide-react";
 import { cn } from "../lib/utils";
 
-interface UsageLog {
-  id: string;
-  tokens: number;
-  timestamp: any;
-}
-
 export const UsageChart: React.FC = () => {
   const { profile } = useAuth();
-  const [logs, setLogs] = useState<UsageLog[]>([]);
+  const [chartData, setChartData] = useState<{ name: string; tokens: number }[]>([]);
   const [view, setView] = useState<"hourly" | "daily">("daily");
 
   useEffect(() => {
     if (!profile) return;
-    const unsubscribe = dataService.subscribeLogs(profile.uid, (data) => {
-      const fetchedLogs = data.map(log => ({
-        ...log,
-        timestamp: log.timestamp?.toDate ? log.timestamp.toDate() : new Date(log.timestamp)
-      }));
-      setLogs(fetchedLogs as UsageLog[]);
+    const unsubscribe = dataService.subscribeUserUsageTrend(view, (data) => {
+      setChartData(Array.isArray(data) ? data : []);
     });
     return () => unsubscribe();
-  }, [profile]);
-
-  const chartData = useMemo(() => {
-    if (view === "daily") {
-      const days = eachDayOfInterval({
-        start: subDays(new Date(), 14),
-        end: new Date(),
-      });
-      return days.map(day => {
-        const total = logs
-          .filter(log => isSameDay(log.timestamp, day))
-          .reduce((sum, log) => sum + log.tokens, 0);
-        return {
-          name: format(day, "MM-dd"),
-          tokens: total,
-        };
-      });
-    } else {
-      const hours = eachHourOfInterval({
-        start: subHours(new Date(), 24),
-        end: new Date(),
-      });
-      return hours.map(hour => {
-        const total = logs
-          .filter(log => isSameHour(log.timestamp, hour))
-          .reduce((sum, log) => sum + log.tokens, 0);
-        return {
-          name: format(hour, "HH:00"),
-          tokens: total,
-        };
-      });
-    }
-  }, [logs, view]);
+  }, [profile, view]);
 
   const stats = useMemo(() => {
     const totalTokens = Number(profile?.usedQuota || 0);
-    const totalCount = Number(profile?.requestCount || logs.length || 0);
+    const totalCount = Number(profile?.requestCount || 0);
     const permanentBalance = Number(profile?.balance || 0);
     const todayUsed = Number(profile?.usedToday || 0);
 
@@ -78,7 +35,7 @@ export const UsageChart: React.FC = () => {
     }
 
     return { totalTokens, totalCount, todayUsed, remainingQuota, quotaLabel, permanentBalance, showPermanentBalance };
-  }, [profile, logs]);
+  }, [profile]);
 
   return (
     <div className="space-y-6">
