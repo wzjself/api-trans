@@ -12,6 +12,35 @@
 
 ---
 
+## 项目截图
+
+> 你可以把自己的截图放到 `docs/` 目录，例如：
+>
+> - `docs/dashboard.png`
+> - `docs/admin-panel.png`
+
+### 用户控制台
+
+- API Key 管理
+- 今日已用 / 今日剩余
+- 登录公告弹窗
+- 兑换码充值
+- 使用记录分页
+
+_建议放一张用户首页截图：`docs/dashboard.png`_
+
+### 管理后台
+
+- 用户管理
+- 天卡 / 月卡 / 永久额度管理
+- 兑换码生成与导出
+- 公告弹窗配置
+- 平台统计
+
+_建议放一张管理后台截图：`docs/admin-panel.png`_
+
+---
+
 ## 为什么这个项目的天卡 / 月卡模式更有优势
 
 ### 1. 比纯余额制更容易卖
@@ -173,13 +202,115 @@
 
 ---
 
-## 技术栈
+## 一键安装（curl）
 
-- **Frontend**: React + Vite + Tailwind
-- **Backend**: Express
-- **Database**: MySQL
-- **Chart**: Recharts
-- **Deploy**: Docker + Blue/Green Switch
+如果你的服务器已经具备：
+
+- Git
+- Docker
+- Docker Compose Plugin
+- 外部 MySQL
+
+那么可以直接用下面的一条命令完成项目克隆、依赖环境准备、配置写入、容器启动：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/wzjself/api-trans/main/scripts/install.sh | bash
+```
+
+### 可选：自定义环境变量后再安装
+
+```bash
+export INSTALL_DIR=/opt/api-trans
+export APP_BASE_URL=http://your-domain-or-ip:18080
+export ADMIN_EMAIL=admin
+export ADMIN_PASSWORD='your-strong-password'
+export MYSQL_HOST=127.0.0.1
+export MYSQL_PORT=3306
+export MYSQL_USER=root
+export MYSQL_PASSWORD='your-mysql-password'
+export MYSQL_DATABASE=api_trans
+
+curl -fsSL https://raw.githubusercontent.com/wzjself/api-trans/main/scripts/install.sh | bash
+```
+
+安装完成后默认会：
+
+- 克隆仓库到 `/opt/api-trans`（可改）
+- 生成 `.env`
+- 创建 `shared-services` Docker 网络（如果不存在）
+- 启动 blue 环境
+- 自动通过网关暴露到 `18080`
+
+---
+
+## 手动部署教程
+
+### 1. 克隆项目
+
+```bash
+git clone https://github.com/wzjself/api-trans.git
+cd api-trans
+```
+
+### 2. 配置环境变量
+
+复制并修改：
+
+```bash
+cp .env.example .env
+```
+
+重点配置：
+
+- `APP_BASE_URL`
+- `VITE_PUBLIC_API_BASE`
+- `ADMIN_EMAIL`
+- `ADMIN_PASSWORD`
+- `TOKEN_SECRET`
+- `MYSQL_HOST`
+- `MYSQL_PORT`
+- `MYSQL_USER`
+- `MYSQL_PASSWORD`
+- `MYSQL_DATABASE`
+
+### 3. 准备 override 文件
+
+```bash
+cat > docker-compose.override.yml <<EOF
+services:
+  api-trans-blue:
+    env_file:
+      - .env
+  api-trans-green:
+    env_file:
+      - .env
+EOF
+```
+
+### 4. 确保共享网络存在
+
+```bash
+docker network inspect shared-services >/dev/null 2>&1 || docker network create shared-services
+```
+
+### 5. 首次部署
+
+```bash
+bash deploy/switch.sh blue
+```
+
+### 6. 后续蓝绿更新
+
+```bash
+git pull
+bash deploy/switch.sh green
+```
+
+或再切回：
+
+```bash
+bash deploy/switch.sh blue
+```
 
 ---
 
@@ -205,16 +336,13 @@ npm run server
 
 ---
 
-## 生产部署
+## 技术栈
 
-项目支持蓝绿部署切换。
-
-切换脚本：
-
-```bash
-bash deploy/switch.sh blue
-bash deploy/switch.sh green
-```
+- **Frontend**: React + Vite + Tailwind
+- **Backend**: Express
+- **Database**: MySQL
+- **Chart**: Recharts
+- **Deploy**: Docker + Blue/Green Switch
 
 ---
 
