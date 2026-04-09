@@ -706,12 +706,23 @@ app.get('/api/users/me/logs', authMiddleware, async (req, res) => {
 app.get('/api/users/me/consume-logs', authMiddleware, async (req, res) => {
   const limit = Number(req.query.limit || 50);
   const offset = Number(req.query.offset || 0);
-  const rows = await query(
-    `SELECT id, model, request_path AS requestPath, prompt_tokens AS promptTokens, completion_tokens AS completionTokens, total_tokens AS totalTokens, consumed_quota AS consumedQuota, status_code AS statusCode, success, error_message AS errorMessage, created_at AS createdAt
-     FROM consume_logs WHERE uid = :uid ORDER BY created_at DESC LIMIT ${Math.min(limit, 500)} OFFSET ${Math.max(offset, 0)}`,
+  const safeLimit = Math.min(Math.max(limit, 1), 500);
+  const safeOffset = Math.max(offset, 0);
+  const [countRow] = await query(
+    `SELECT COUNT(*) AS total FROM consume_logs WHERE uid = :uid`,
     { uid: req.user.uid }
   );
-  res.json(rows);
+  const rows = await query(
+    `SELECT id, model, request_path AS requestPath, prompt_tokens AS promptTokens, completion_tokens AS completionTokens, total_tokens AS totalTokens, consumed_quota AS consumedQuota, status_code AS statusCode, success, error_message AS errorMessage, created_at AS createdAt
+     FROM consume_logs WHERE uid = :uid ORDER BY created_at DESC LIMIT ${safeLimit} OFFSET ${safeOffset}`,
+    { uid: req.user.uid }
+  );
+  res.json({
+    items: rows,
+    total: Number(countRow?.total || 0),
+    limit: safeLimit,
+    offset: safeOffset,
+  });
 });
 
 app.get('/api/users/me/records', authMiddleware, async (req, res) => {

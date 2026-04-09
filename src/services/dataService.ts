@@ -41,18 +41,18 @@ export const dataService = {
     return () => { cancelled = true; window.clearInterval(timer); };
   },
 
-  subscribeConsumeLogs: (callback: (logs: any[]) => void, limitCount?: number, offsetCount?: number) => {
+  subscribeConsumeLogs: (callback: (result: any) => void, limitCount?: number, offsetCount?: number) => {
     let cancelled = false;
     const params = new URLSearchParams();
     if (limitCount) params.set('limit', String(limitCount));
     if (offsetCount) params.set('offset', String(offsetCount));
     const qs = params.toString() ? `?${params.toString()}` : '';
-    const run = () => apiClient.get(`/api/users/me/consume-logs${qs}`).then((data: any[]) => {
+    const run = () => apiClient.get(`/api/users/me/consume-logs${qs}`).then((data: any) => {
       if (!cancelled) callback(data);
     }).catch(console.error);
     run();
-    const timer = offsetCount && offsetCount > 0 ? null : window.setInterval(run, POLL_FAST);
-    return () => { cancelled = true; if (timer) window.clearInterval(timer); };
+    const timer = window.setInterval(run, POLL_FAST);
+    return () => { cancelled = true; window.clearInterval(timer); };
   },
 
   subscribeUsageRecords: (callback: (logs: any[]) => void, limitCount?: number) => {

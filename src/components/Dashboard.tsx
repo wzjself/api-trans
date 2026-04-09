@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { ApiKeyManager } from "./ApiKeyManager";
 import { UsageChart } from "./UsageChart";
 import { Redemption } from "./Redemption";
-import { Globe, Terminal, Copy, Check, Activity, RefreshCw, Wallet, CalendarClock, ChevronDown } from "lucide-react";
+import { Globe, Terminal, Copy, Check, Activity, RefreshCw, Wallet, CalendarClock, ChevronLeft, ChevronRight } from "lucide-react";
 import { format } from "date-fns";
 
 const API_BASE_URL = import.meta.env.VITE_PUBLIC_API_BASE || window.location.origin;
@@ -56,12 +56,19 @@ const UsageRecordsTable: React.FC = () => {
 const ConsumeLogsTable: React.FC = () => {
   const PAGE_SIZE = 20;
   const [logs, setLogs] = useState<any[]>([]);
-  const [limit, setLimit] = useState(PAGE_SIZE);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
 
   useEffect(() => {
-    const unsub = dataService.subscribeConsumeLogs((data) => setLogs(data || []), limit, 0);
+    const offset = (page - 1) * PAGE_SIZE;
+    const unsub = dataService.subscribeConsumeLogs((data) => {
+      setLogs(data?.items || []);
+      setTotal(Number(data?.total || 0));
+    }, PAGE_SIZE, offset);
     return () => unsub();
-  }, [limit]);
+  }, [page]);
+
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   return (
     <div className="space-y-4">
@@ -99,21 +106,35 @@ const ConsumeLogsTable: React.FC = () => {
           </tbody>
         </table>
       </div>
-      {logs.length >= limit && (
-        <div className="flex justify-center">
+      <div className="flex items-center justify-between gap-3 flex-wrap text-sm text-zinc-500">
+        <div>
+          共 {total.toLocaleString()} 条 · 第 {page} / {totalPages} 页
+        </div>
+        <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={() => setLimit((prev) => Math.min(prev + PAGE_SIZE, 500))}
-            className="px-4 py-2 text-sm rounded-xl border border-zinc-200 dark:border-zinc-800 flex items-center gap-2 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-all"
+            onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+            disabled={page <= 1}
+            className="px-3 py-1.5 rounded-xl border border-zinc-200 dark:border-zinc-800 flex items-center gap-1 disabled:opacity-50"
           >
-            <ChevronDown className="w-4 h-4" />
-            加载更多
+            <ChevronLeft className="w-4 h-4" />
+            上一页
+          </button>
+          <button
+            type="button"
+            onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
+            disabled={page >= totalPages}
+            className="px-3 py-1.5 rounded-xl border border-zinc-200 dark:border-zinc-800 flex items-center gap-1 disabled:opacity-50"
+          >
+            下一页
+            <ChevronRight className="w-4 h-4" />
           </button>
         </div>
-      )}
+      </div>
     </div>
   );
 };
+
 
 export const Dashboard: React.FC = () => {
   const { profile, refreshProfile } = useAuth();
