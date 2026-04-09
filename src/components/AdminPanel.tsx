@@ -69,7 +69,6 @@ export const AdminPanel: React.FC = () => {
   const [expandedCodes, setExpandedCodes] = useState<Record<string, boolean>>({});
   const [lastGeneratedCodes, setLastGeneratedCodes] = useState<string[]>([]);
   const [userFilter, setUserFilter] = useState<(typeof USER_FILTERS)[number]["key"]>("all");
-  const [isCodesSectionCollapsed, setIsCodesSectionCollapsed] = useState(false);
 
   const shouldCollapseCode = (code: string) => code.length > 18;
   const formatCodePreview = (code: string) => (shouldCollapseCode(code) ? `${code.slice(0, 10)}...${code.slice(-6)}` : code);
@@ -424,22 +423,20 @@ export const AdminPanel: React.FC = () => {
         </div>
       </div>
 
-      <div className="space-y-6">
-        <div className="flex items-center justify-between gap-4 flex-wrap">
+      <details className="space-y-6" open>
+        <summary className="flex items-center justify-between gap-4 flex-wrap cursor-pointer list-none [&::-webkit-details-marker]:hidden">
           <div className="flex items-center gap-2 text-xl font-semibold tracking-tight">
             <Key className="w-5 h-5 text-zinc-500" />
             <h2>兑换码管理</h2>
           </div>
-          <button
-            type="button"
-            onClick={() => setIsCodesSectionCollapsed((prev) => !prev)}
-            className="px-3 py-1.5 text-sm rounded-xl border border-zinc-200 dark:border-zinc-800 flex items-center gap-2 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-all"
-          >
-            {isCodesSectionCollapsed ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
-            {isCodesSectionCollapsed ? '展开兑换码列表' : '收起兑换码列表'}
-          </button>
-        </div>
-        <div className={cn("space-y-4", isCodesSectionCollapsed && "hidden") }>
+          <div className="px-3 py-1.5 text-sm rounded-xl border border-zinc-200 dark:border-zinc-800 flex items-center gap-2 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-all">
+            <ChevronDown className="w-4 h-4 details-open:hidden" />
+            <ChevronUp className="w-4 h-4 hidden details-open:block" />
+            <span className="details-open:hidden">展开兑换码列表</span>
+            <span className="hidden details-open:inline">收起兑换码列表</span>
+          </div>
+        </summary>
+        <div className="space-y-4 pt-2">
         <div className="p-6 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/50 flex flex-wrap gap-4 items-end">
           <div className="space-y-1.5"><label className="text-xs font-medium text-zinc-500 uppercase tracking-wider">类型</label><select className="w-full px-3 py-2 text-sm rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900" value={newCode.type} onChange={(e) => setNewCode({ ...newCode, type: e.target.value as any })}><option value="permanent">额度直冲 (永久)</option><option value="daily">天卡</option><option value="monthly">月卡</option></select></div>
           <div className="space-y-1.5"><label className="text-xs font-medium text-zinc-500 uppercase tracking-wider">{newCode.type === 'permanent' ? '额度' : '每日额度'}</label><input type="number" className="w-full px-3 py-2 text-sm rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900" value={newCode.value} onChange={(e) => setNewCode({ ...newCode, value: parseInt(e.target.value || '0') })} /></div>
@@ -458,7 +455,7 @@ export const AdminPanel: React.FC = () => {
           })}
         </div>
         </div>
-      </div>
+      </details>
 
       <div className="space-y-6">
         <div className="flex items-center justify-between gap-4 flex-wrap">
