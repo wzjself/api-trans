@@ -953,14 +953,21 @@ app.get('/api/admin/platform-trend', authMiddleware, adminMiddleware, async (_re
       SELECT DATE_SUB(DATE(UTC_TIMESTAMP() + INTERVAL 8 HOUR), INTERVAL 13 DAY) AS d
       UNION ALL
       SELECT DATE_ADD(d, INTERVAL 1 DAY) FROM days WHERE d < DATE(UTC_TIMESTAMP() + INTERVAL 8 HOUR)
+    ),
+    usage_by_day AS (
+      SELECT
+        DATE(CONVERT_TZ(created_at, '+00:00', '+08:00')) AS d,
+        COUNT(*) AS requests,
+        COALESCE(SUM(tokens), 0) AS tokens
+      FROM usage_logs
+      GROUP BY DATE(CONVERT_TZ(created_at, '+00:00', '+08:00'))
     )
     SELECT
       DATE_FORMAT(days.d, '%m-%d') AS day,
-      COALESCE(COUNT(ul.id), 0) AS requests,
-      COALESCE(SUM(ul.tokens), 0) AS tokens
+      COALESCE(usage_by_day.requests, 0) AS requests,
+      COALESCE(usage_by_day.tokens, 0) AS tokens
     FROM days
-    LEFT JOIN usage_logs ul ON DATE(CONVERT_TZ(ul.created_at, '+00:00', '+08:00')) = days.d
-    GROUP BY days.d
+    LEFT JOIN usage_by_day ON usage_by_day.d = days.d
     ORDER BY days.d ASC
   `);
   res.json(rows.map((row) => ({
