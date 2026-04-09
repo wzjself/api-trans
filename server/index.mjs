@@ -930,14 +930,7 @@ app.get('/api/users/me/usage-trend', authMiddleware, async (req, res) => {
 app.get('/api/admin/platform-summary', authMiddleware, adminMiddleware, async (_req, res) => {
   const [userRow] = await query('SELECT COUNT(*) AS totalUsers FROM users');
   const [keyRow] = await query('SELECT COUNT(*) AS totalApiKeys FROM api_keys WHERE status = "active"');
-  const [usage14Row] = await query(`
-    SELECT
-      COUNT(*) AS totalRequests,
-      COALESCE(SUM(tokens),0) AS totalTokens
-    FROM usage_logs
-    WHERE DATE(CONVERT_TZ(created_at, '+00:00', '+08:00')) >= DATE_SUB(DATE(UTC_TIMESTAMP() + INTERVAL 8 HOUR), INTERVAL 13 DAY)
-      AND DATE(CONVERT_TZ(created_at, '+00:00', '+08:00')) <= DATE(UTC_TIMESTAMP() + INTERVAL 8 HOUR)
-  `);
+  const [usageRow] = await query('SELECT COUNT(*) AS totalRequests, COALESCE(SUM(tokens),0) AS totalTokens FROM usage_logs');
   const [todayRow] = await query(`SELECT COALESCE(SUM(tokens),0) AS todayTokens
     FROM usage_logs
     WHERE DATE(CONVERT_TZ(created_at, '+00:00', '+08:00')) = DATE(UTC_TIMESTAMP() + INTERVAL 8 HOUR)`);
@@ -946,8 +939,8 @@ app.get('/api/admin/platform-summary', authMiddleware, adminMiddleware, async (_
   res.json({
     totalUsers: Number(userRow?.totalUsers || 0),
     totalApiKeys: Number(keyRow?.totalApiKeys || 0),
-    totalRequests: Number(usage14Row?.totalRequests || 0),
-    totalTokens: Number(usage14Row?.totalTokens || 0),
+    totalRequests: Number(usageRow?.totalRequests || 0),
+    totalTokens: Number(usageRow?.totalTokens || 0),
     todayTokens: Number(todayRow?.todayTokens || 0),
     rpm: Number(rpmRow?.rpm || 0),
     tpm: Number(tpmRow?.tpm || 0),
