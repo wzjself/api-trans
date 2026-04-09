@@ -335,6 +335,8 @@ async function ensureSchema() {
     await setSetting('system', {
       guideLink: '',
       announcement: '',
+      announcementPopupEnabled: false,
+      announcementPopupVersion: '',
       appBaseUrl: APP_BASE_URL,
       defaultModel: '',
     });
@@ -342,6 +344,8 @@ async function ensureSchema() {
     await setSetting('system', {
       guideLink: currentSettings.guideLink || '',
       announcement: currentSettings.announcement || '',
+      announcementPopupEnabled: Boolean(currentSettings.announcementPopupEnabled),
+      announcementPopupVersion: String(currentSettings.announcementPopupVersion || ''),
       appBaseUrl: APP_BASE_URL || currentSettings.appBaseUrl || '',
       defaultModel: currentSettings.defaultModel || currentSettings.activeModel || '',
     });

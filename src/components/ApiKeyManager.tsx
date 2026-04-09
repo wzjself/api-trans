@@ -2,7 +2,6 @@ import React, { useState, useEffect } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { dataService } from "../services/dataService";
 import { Plus, Trash2, Copy, Check, FlaskConical, AlertTriangle, RefreshCw } from "lucide-react";
-import { motion, AnimatePresence } from "motion/react";
 
 interface ApiKey {
   id: string;
@@ -146,9 +145,8 @@ export const ApiKeyManager: React.FC = () => {
         </div>
 
         <div className="grid gap-4">
-          <AnimatePresence mode="popLayout">
-            {keys.map((key) => (
-              <motion.div key={key.id} layout initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95 }} className="p-4 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/50 flex items-center justify-between group">
+          {keys.map((key) => (
+            <div key={key.id} className="p-4 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/50 flex items-center justify-between group">
                 <div className="space-y-2">
                   <div className="flex items-center gap-2">
                     <span className="font-medium text-sm">{key.name}</span>
@@ -166,17 +164,15 @@ export const ApiKeyManager: React.FC = () => {
                   </button>
                   <button type="button" onClick={() => setPendingDelete(key)} className="p-2 text-zinc-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"><Trash2 className="w-4 h-4" /></button>
                 </div>
-              </motion.div>
+              </div>
             ))}
-          </AnimatePresence>
           {keys.length === 0 && <div className="py-12 text-center text-zinc-500 border-2 border-dashed border-zinc-100 dark:border-zinc-900 rounded-2xl">暂无 API 密钥，请创建一个。</div>}
         </div>
       </div>
 
-      <AnimatePresence>
-        {pendingDelete && (
+      {pendingDelete && (
           <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="w-full max-w-md p-8 rounded-3xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-2xl space-y-6">
+            <div className="w-full max-w-md p-8 rounded-3xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-2xl space-y-6">
               <div className="space-y-3 text-center">
                 <div className="w-14 h-14 mx-auto rounded-full bg-red-50 dark:bg-red-900/20 flex items-center justify-center">
                   <AlertTriangle className="w-7 h-7 text-red-500" />
@@ -192,10 +188,9 @@ export const ApiKeyManager: React.FC = () => {
                 <button type="button" onClick={() => setPendingDelete(null)} className="flex-1 py-3 text-sm font-medium rounded-xl border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-all">取消</button>
                 <button type="button" onClick={confirmDeleteKey} disabled={isDeleting} className="flex-1 py-3 text-sm font-medium text-white bg-red-600 rounded-xl hover:opacity-90 disabled:opacity-50 transition-all">{isDeleting ? '删除中...' : '确认删除'}</button>
               </div>
-            </motion.div>
+            </div>
           </div>
         )}
-      </AnimatePresence>
     </>
   );
 };

@@ -2,7 +2,6 @@ import React, { useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { dataService } from "../services/dataService";
 import { Ticket, Loader2, CheckCircle2, AlertCircle } from "lucide-react";
-import { motion, AnimatePresence } from "motion/react";
 import { cn } from "../lib/utils";
 
 export const Redemption: React.FC = () => {
@@ -56,22 +55,17 @@ export const Redemption: React.FC = () => {
         </button>
       </div>
 
-      <AnimatePresence>
-        {status && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: "auto" }}
-            exit={{ opacity: 0, height: 0 }}
-            className={cn(
-              "p-3 rounded-xl text-sm flex items-center gap-2",
-              status.type === "success" ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400" : "bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-400"
-            )}
-          >
-            {status.type === "success" ? <CheckCircle2 className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
-            {status.message}
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {status && (
+        <div
+          className={cn(
+            "p-3 rounded-xl text-sm flex items-center gap-2",
+            status.type === "success" ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400" : "bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-400"
+          )}
+        >
+          {status.type === "success" ? <CheckCircle2 className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
+          {status.message}
+        </div>
+      )}
     </div>
   );
 };

@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { dataService } from "../services/dataService";
 import { Users, Key, Plus, Trash2, Shield, User as UserIcon, Check, Copy, Settings, Database, Save, RefreshCw, AlertTriangle, Download, ChevronDown, ChevronUp } from "lucide-react";
-import { motion, AnimatePresence } from "motion/react";
 import { cn } from "../lib/utils";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 
@@ -56,7 +55,7 @@ export const AdminPanel: React.FC = () => {
   const [pendingDeleteUser, setPendingDeleteUser] = useState<UserProfile | null>(null);
   const [isDeletingUser, setIsDeletingUser] = useState(false);
   const [newBalance, setNewBalance] = useState(0);
-  const [settings, setSettings] = useState({ guideLink: "", announcement: "" });
+  const [settings, setSettings] = useState({ guideLink: "", announcement: "", announcementPopupEnabled: false, announcementPopupVersion: "" });
   const [isSavingGuideLink, setIsSavingGuideLink] = useState(false);
   const [isSavingAnnouncement, setIsSavingAnnouncement] = useState(false);
   const [providers, setProviders] = useState<ProviderConfig[]>([]);
@@ -118,7 +117,7 @@ export const AdminPanel: React.FC = () => {
     const quotaType = userFilter === 'all' ? '' : userFilter;
     const unsubUsers = dataService.subscribeAllUsers((data) => setUsers(data as UserProfile[]), quotaType);
     const unsubCodes = dataService.subscribeAllCodes((data) => setCodes(data as RedemptionCode[]));
-    const unsubSettings = dataService.subscribeSettings((data) => setSettings(data || { guideLink: "", announcement: "" }));
+    const unsubSettings = dataService.subscribeSettings((data) => setSettings(data || { guideLink: "", announcement: "", announcementPopupEnabled: false, announcementPopupVersion: "" }));
     const unsubProviders = dataService.subscribeProviders((data) => {
       setProviders(data.providers || []);
       setDefaultModel(data.defaultModel || "");
@@ -160,7 +159,11 @@ export const AdminPanel: React.FC = () => {
   const saveAnnouncement = async () => {
     setIsSavingAnnouncement(true);
     try {
-      await dataService.updateSettings({ announcement: settings.announcement });
+      await dataService.updateSettings({
+        announcement: settings.announcement,
+        announcementPopupEnabled: !!settings.announcementPopupEnabled,
+        announcementPopupVersion: String(settings.announcementPopupVersion || "").trim(),
+      });
     } finally {
       setIsSavingAnnouncement(false);
     }
@@ -347,7 +350,25 @@ export const AdminPanel: React.FC = () => {
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-zinc-500 uppercase tracking-wider">公告内容</label>
             <textarea className="w-full px-3 py-2 text-sm rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 min-h-[120px]" value={settings.announcement} onChange={(e) => setSettings({ ...settings, announcement: e.target.value })} placeholder="这里填写用户页展示的公告内容" />
-            <button onClick={saveAnnouncement} disabled={isSavingAnnouncement} className="px-6 py-2 text-sm font-medium text-white bg-zinc-900 dark:bg-zinc-100 dark:text-zinc-900 rounded-xl">{isSavingAnnouncement ? '保存中...' : '单独保存公告内容'}</button>
+            <div className="flex flex-col gap-3 rounded-xl border border-zinc-200 dark:border-zinc-800 p-4">
+              <label className="text-sm text-zinc-600 dark:text-zinc-300 flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={!!settings.announcementPopupEnabled}
+                  onChange={(e) => setSettings({ ...settings, announcementPopupEnabled: e.target.checked })}
+                />
+                登录后弹出公告 UI
+              </label>
+              <input
+                type="text"
+                className="w-full px-3 py-2 text-sm rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900"
+                value={settings.announcementPopupVersion || ""}
+                onChange={(e) => setSettings({ ...settings, announcementPopupVersion: e.target.value })}
+                placeholder="公告版本号（可选，不填默认跟随公告内容）"
+              />
+              <div className="text-xs text-zinc-500">用户弹窗默认勾选“不再弹出”；同一版本公告用户只会确认一次。</div>
+            </div>
+            <button onClick={saveAnnouncement} disabled={isSavingAnnouncement} className="px-6 py-2 text-sm font-medium text-white bg-zinc-900 dark:bg-zinc-100 dark:text-zinc-900 rounded-xl">{isSavingAnnouncement ? '保存中...' : '保存公告与弹窗设置'}</button>
           </div>
         </div>
       </div>
@@ -470,13 +491,9 @@ export const AdminPanel: React.FC = () => {
         </div>
       </div>
 
-      <AnimatePresence>
-        {editingUser && <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"><motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="w-full max-w-md p-8 rounded-3xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-2xl space-y-6"><div className="space-y-2"><h3 className="text-xl font-bold tracking-tight">编辑用户余额</h3><p className="text-sm text-zinc-500">修改 {editingUser.email} 的永久额度。</p></div><div className="space-y-1.5"><label className="text-xs font-medium text-zinc-500 uppercase tracking-wider">当前余额: {editingUser.balance.toLocaleString()}</label><input type="number" className="w-full px-4 py-3 text-sm rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 font-mono" value={newBalance} onChange={(e) => setNewBalance(parseInt(e.target.value || '0'))} /></div><div className="flex gap-3"><button onClick={() => setEditingUser(null)} className="flex-1 py-3 text-sm font-medium rounded-xl border border-zinc-200 dark:border-zinc-800">取消</button><button onClick={updateUserBalance} className="flex-1 py-3 text-sm font-medium text-white bg-zinc-900 dark:bg-zinc-100 dark:text-zinc-900 rounded-xl">保存修改</button></div></motion.div></div>}
-      </AnimatePresence>
+      {editingUser && <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"><div className="w-full max-w-md p-8 rounded-3xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-2xl space-y-6"><div className="space-y-2"><h3 className="text-xl font-bold tracking-tight">编辑用户余额</h3><p className="text-sm text-zinc-500">修改 {editingUser.email} 的永久额度。</p></div><div className="space-y-1.5"><label className="text-xs font-medium text-zinc-500 uppercase tracking-wider">当前余额: {editingUser.balance.toLocaleString()}</label><input type="number" className="w-full px-4 py-3 text-sm rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 font-mono" value={newBalance} onChange={(e) => setNewBalance(parseInt(e.target.value || '0'))} /></div><div className="flex gap-3"><button onClick={() => setEditingUser(null)} className="flex-1 py-3 text-sm font-medium rounded-xl border border-zinc-200 dark:border-zinc-800">取消</button><button onClick={updateUserBalance} className="flex-1 py-3 text-sm font-medium text-white bg-zinc-900 dark:bg-zinc-100 dark:text-zinc-900 rounded-xl">保存修改</button></div></div></div>}
 
-      <AnimatePresence>
-        {pendingDeleteUser && <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"><motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="w-full max-w-md p-8 rounded-3xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-2xl space-y-6"><div className="space-y-3 text-center"><div className="w-14 h-14 mx-auto rounded-full bg-red-50 dark:bg-red-900/20 flex items-center justify-center"><AlertTriangle className="w-7 h-7 text-red-500" /></div><div><h3 className="text-xl font-bold tracking-tight">确认删除账号</h3><p className="text-sm text-zinc-500 mt-2">将要删除：<span className="font-medium text-zinc-900 dark:text-zinc-100">{pendingDeleteUser.email}</span></p><p className="text-xs text-zinc-400 mt-1 break-all">{pendingDeleteUser.uid}</p></div><p className="text-sm text-red-500">删除后该用户的密钥和使用记录也会一并清理，不可恢复。</p></div><div className="flex gap-3"><button type="button" onClick={() => setPendingDeleteUser(null)} className="flex-1 py-3 text-sm font-medium rounded-xl border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-all">取消</button><button type="button" onClick={confirmDeleteUser} disabled={isDeletingUser} className="flex-1 py-3 text-sm font-medium text-white bg-red-600 rounded-xl hover:opacity-90 disabled:opacity-50 transition-all">{isDeletingUser ? '删除中...' : '确认删除'}</button></div></motion.div></div>}
-      </AnimatePresence>
+      {pendingDeleteUser && <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"><div className="w-full max-w-md p-8 rounded-3xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-2xl space-y-6"><div className="space-y-3 text-center"><div className="w-14 h-14 mx-auto rounded-full bg-red-50 dark:bg-red-900/20 flex items-center justify-center"><AlertTriangle className="w-7 h-7 text-red-500" /></div><div><h3 className="text-xl font-bold tracking-tight">确认删除账号</h3><p className="text-sm text-zinc-500 mt-2">将要删除：<span className="font-medium text-zinc-900 dark:text-zinc-100">{pendingDeleteUser.email}</span></p><p className="text-xs text-zinc-400 mt-1 break-all">{pendingDeleteUser.uid}</p></div><p className="text-sm text-red-500">删除后该用户的密钥和使用记录也会一并清理，不可恢复。</p></div><div className="flex gap-3"><button type="button" onClick={() => setPendingDeleteUser(null)} className="flex-1 py-3 text-sm font-medium rounded-xl border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-all">取消</button><button type="button" onClick={confirmDeleteUser} disabled={isDeletingUser} className="flex-1 py-3 text-sm font-medium text-white bg-red-600 rounded-xl hover:opacity-90 disabled:opacity-50 transition-all">{isDeletingUser ? '删除中...' : '确认删除'}</button></div></div></div>}
     </div>
   );
 };
