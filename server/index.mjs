@@ -24,6 +24,7 @@ const MYSQL_USER = process.env.MYSQL_USER || 'root';
 const MYSQL_PASSWORD = process.env.MYSQL_PASSWORD || 'wzjself';
 const MYSQL_DATABASE = process.env.MYSQL_DATABASE || 'api_trans';
 
+app.set('trust proxy', true);
 app.use(express.json({ limit: '100mb' }));
 
 const pool = mysql.createPool({
@@ -71,6 +72,105 @@ function verifyToken(token = '') {
   const payload = JSON.parse(Buffer.from(body, 'base64url').toString('utf8'));
   if (payload.exp && payload.exp < Date.now()) return null;
   return payload;
+}
+
+function getClientFingerprint(req) {
+  const forwarded = req.headers['x-forwarded-for'];
+  const rawIp = Array.isArray(forwarded) ? forwarded[0] : String(forwarded || req.ip || req.socket?.remoteAddress || 'unknown');
+  const ip = String(rawIp).split(',')[0].trim().replace(/^::ffff:/, '');
+  const device = String(req.headers['x-device-id'] || req.headers['x-client-id'] || req.headers['user-agent'] || 'unknown').slice(0, 255);
+  return { ip, device, key: `${ip}__${device}` };
+}
+
+async function getLoginGuardState(req) {
+  const { ip, device, key } = getClientFingerprint(req);
+  const rows = await query('SELECT * FROM auth_guards WHERE guard_type = :guard_type AND guard_key = :guard_key LIMIT 1', {
+    guard_type: 'login',
+    guard_key: key,
+  });
+  return { row: rows[0] || null, ip, device, key };
+}
+
+async function recordLoginFailure(req) {
+  const { row, ip, device, key } = await getLoginGuardState(req);
+  const failedCount = Number(row?.failed_count || 0) + 1;
+  const blockedUntil = failedCount >= 10 ? new Date(Date.now() + 10 * 60 * 1000) : null;
+  await query(
+    `INSERT INTO auth_guards (guard_type, guard_key, ip, device, failed_count, blocked_until, register_count, first_register_at, banned_until)
+     VALUES ('login', :guard_key, :ip, :device, :failed_count, :blocked_until, 0, NULL, NULL)
+     ON DUPLICATE KEY UPDATE ip = VALUES(ip), device = VALUES(device), failed_count = :failed_count, blocked_until = :blocked_until, updated_at = NOW()`,
+    {
+      guard_key: key,
+      ip,
+      device,
+      failed_count: failedCount,
+      blocked_until: blockedUntil,
+    }
+  );
+  return { failedCount, blockedUntil };
+}
+
+async function clearLoginFailures(req) {
+  const { key } = await getLoginGuardState(req);
+  await query('UPDATE auth_guards SET failed_count = 0, blocked_until = NULL, updated_at = NOW() WHERE guard_type = :guard_type AND guard_key = :guard_key', {
+    guard_type: 'login',
+    guard_key: key,
+  });
+}
+
+async function ensureLoginAllowed(req) {
+  const { row } = await getLoginGuardState(req);
+  if (!row?.blocked_until) return;
+  const blockedUntil = new Date(row.blocked_until).getTime();
+  if (blockedUntil > Date.now()) {
+    const remainMinutes = Math.ceil((blockedUntil - Date.now()) / 60000);
+    const error = new Error(`登录失败次数过多，请 ${remainMinutes} 分钟后再试`);
+    error.statusCode = 429;
+    throw error;
+  }
+}
+
+async function getRegisterGuardState(req) {
+  const { ip, device, key } = getClientFingerprint(req);
+  const rows = await query('SELECT * FROM auth_guards WHERE guard_type = :guard_type AND guard_key = :guard_key LIMIT 1', {
+    guard_type: 'register',
+    guard_key: key,
+  });
+  return { row: rows[0] || null, ip, device, key };
+}
+
+async function ensureRegisterAllowed(req) {
+  const { row } = await getRegisterGuardState(req);
+  if (!row?.banned_until) return;
+  if (new Date(row.banned_until).getTime() > Date.now()) {
+    const error = new Error('该 IP/设备注册过于频繁，已被禁止注册');
+    error.statusCode = 429;
+    throw error;
+  }
+}
+
+async function recordRegisterSuccess(req) {
+  const { row, ip, device, key } = await getRegisterGuardState(req);
+  const now = Date.now();
+  const firstRegisterAt = row?.first_register_at ? new Date(row.first_register_at).getTime() : null;
+  const withinWindow = firstRegisterAt && now - firstRegisterAt <= 60 * 60 * 1000;
+  const registerCount = withinWindow ? Number(row?.register_count || 0) + 1 : 1;
+  const nextFirstRegisterAt = withinWindow ? new Date(firstRegisterAt) : new Date(now);
+  const bannedUntil = registerCount > 10 ? new Date(now + 3650 * 24 * 60 * 60 * 1000) : null;
+
+  await query(
+    `INSERT INTO auth_guards (guard_type, guard_key, ip, device, failed_count, blocked_until, register_count, first_register_at, banned_until)
+     VALUES ('register', :guard_key, :ip, :device, 0, NULL, :register_count, :first_register_at, :banned_until)
+     ON DUPLICATE KEY UPDATE ip = VALUES(ip), device = VALUES(device), register_count = :register_count, first_register_at = :first_register_at, banned_until = :banned_until, updated_at = NOW()`,
+    {
+      guard_key: key,
+      ip,
+      device,
+      register_count: registerCount,
+      first_register_at: nextFirstRegisterAt,
+      banned_until: bannedUntil,
+    }
+  );
 }
 
 function sanitizeUser(user) {
@@ -277,6 +377,25 @@ async function ensureSchema() {
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     INDEX idx_consume_uid_created (uid, created_at),
     CONSTRAINT fk_consume_user FOREIGN KEY (uid) REFERENCES users(uid) ON DELETE CASCADE
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`);
+
+  await query(`CREATE TABLE IF NOT EXISTS auth_guards (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    guard_type ENUM('login','register') NOT NULL,
+    guard_key VARCHAR(512) NOT NULL,
+    ip VARCHAR(128) NOT NULL,
+    device VARCHAR(255) NULL,
+    failed_count INT NOT NULL DEFAULT 0,
+    blocked_until DATETIME NULL,
+    register_count INT NOT NULL DEFAULT 0,
+    first_register_at DATETIME NULL,
+    banned_until DATETIME NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uniq_guard (guard_type, guard_key),
+    INDEX idx_guard_ip (ip),
+    INDEX idx_guard_blocked (blocked_until),
+    INDEX idx_guard_banned (banned_until)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`);
 
   await query(`CREATE TABLE IF NOT EXISTS redemption_codes (
@@ -530,29 +649,47 @@ app.get('/api/health', async (_req, res) => {
 });
 
 app.post('/api/auth/register', async (req, res) => {
-  const { email, password } = req.body || {};
-  if (!email || !password) return res.status(400).json({ error: '账号和密码必填' });
-  const existing = await getUserByEmail(email);
-  if (existing) return res.status(409).json({ error: '账号已存在' });
-  const uid = randomId('user_');
-  await query(
-    `INSERT INTO users (uid, email, password_hash, role, balance, quota_type, daily_quota)
-     VALUES (:uid, :email, :password_hash, 'user', :balance, 'none', 0)`,
-    { uid, email, password_hash: hashPassword(password), balance: USER_INITIAL_BALANCE }
-  );
-  const user = await getUserByUid(uid);
-  const token = signToken({ uid, exp: Date.now() + 30 * 24 * 3600 * 1000 });
-  res.json({ token, user: sanitizeUser(user) });
+  try {
+    await ensureRegisterAllowed(req);
+    const { email, password } = req.body || {};
+    if (!email || !password) return res.status(400).json({ error: '账号和密码必填' });
+    const existing = await getUserByEmail(email);
+    if (existing) return res.status(409).json({ error: '账号已存在' });
+    const uid = randomId('user_');
+    await query(
+      `INSERT INTO users (uid, email, password_hash, role, balance, quota_type, daily_quota)
+       VALUES (:uid, :email, :password_hash, 'user', :balance, 'none', 0)`,
+      { uid, email, password_hash: hashPassword(password), balance: USER_INITIAL_BALANCE }
+    );
+    await recordRegisterSuccess(req);
+    const user = await getUserByUid(uid);
+    const token = signToken({ uid, exp: Date.now() + 30 * 24 * 3600 * 1000 });
+    res.json({ token, user: sanitizeUser(user) });
+  } catch (error) {
+    const statusCode = error.statusCode || 500;
+    res.status(statusCode).json({ error: error.message || '注册失败' });
+  }
 });
 
 app.post('/api/auth/login', async (req, res) => {
-  const { email, password } = req.body || {};
-  const user = await getUserByEmail(email);
-  if (!user || !verifyPassword(password, user.password_hash)) {
-    return res.status(401).json({ error: '账号或密码错误' });
+  try {
+    await ensureLoginAllowed(req);
+    const { email, password } = req.body || {};
+    const user = await getUserByEmail(email);
+    if (!user || !verifyPassword(password, user.password_hash)) {
+      const { blockedUntil } = await recordLoginFailure(req);
+      if (blockedUntil) {
+        return res.status(429).json({ error: '登录失败次数过多，请 10 分钟后再试' });
+      }
+      return res.status(401).json({ error: '账号或密码错误' });
+    }
+    await clearLoginFailures(req);
+    const token = signToken({ uid: user.uid, exp: Date.now() + 30 * 24 * 3600 * 1000 });
+    res.json({ token, user: sanitizeUser(user) });
+  } catch (error) {
+    const statusCode = error.statusCode || 500;
+    res.status(statusCode).json({ error: error.message || '登录失败' });
   }
-  const token = signToken({ uid: user.uid, exp: Date.now() + 30 * 24 * 3600 * 1000 });
-  res.json({ token, user: sanitizeUser(user) });
 });
 
 app.get('/api/auth/me', authMiddleware, async (req, res) => {
