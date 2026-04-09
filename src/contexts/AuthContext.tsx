@@ -10,6 +10,7 @@ interface UserProfile {
   role: "admin" | "user";
   balance: number;
   usedQuota?: number;
+  usedToday?: number;
   requestCount?: number;
   quotaType: "none" | "daily" | "monthly";
   dailyQuota: number;

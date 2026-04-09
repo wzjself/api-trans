@@ -91,6 +91,27 @@ function sanitizeUser(user) {
   };
 }
 
+async function getTodayUsedTokens(uid) {
+  if (!uid) return 0;
+  const rows = await query(
+    `SELECT COALESCE(SUM(tokens),0) AS total FROM usage_logs
+     WHERE uid = :uid
+       AND DATE(CONVERT_TZ(created_at, '+00:00', '+08:00')) = DATE(UTC_TIMESTAMP() + INTERVAL 8 HOUR)`,
+    { uid }
+  );
+  return Number(rows[0]?.total || 0);
+}
+
+async function sanitizeUserWithToday(user) {
+  const sanitized = sanitizeUser(user);
+  if (!sanitized) return null;
+  return {
+    ...sanitized,
+    usedToday: await getTodayUsedTokens(sanitized.uid),
+  };
+}
+
+
 function parseModelsJson(value) {
   if (!value) return [];
   if (Array.isArray(value)) return value.filter(Boolean);
@@ -368,13 +389,7 @@ async function getQuotaStatus(user) {
       user.quota_expires_at = null;
       return { type: 'none', remaining: Number(user.balance || 0) };
     }
-    const todayRows = await query(
-      `SELECT COALESCE(SUM(tokens),0) AS total FROM usage_logs
-       WHERE uid = :uid
-         AND DATE(CONVERT_TZ(created_at, '+00:00', '+08:00')) = DATE(UTC_TIMESTAMP() + INTERVAL 8 HOUR)`,
-      { uid: user.uid }
-    );
-    const usedToday = Number(todayRows[0]?.total || 0);
+    const usedToday = await getTodayUsedTokens(user.uid);
     return { type: user.quota_type, remaining: Math.max(0, Number(user.daily_quota || 0) - usedToday) };
   }
   return { type: 'permanent', remaining: Math.max(0, Number(user.balance || 0)) };
@@ -538,7 +553,7 @@ app.post('/api/auth/login', async (req, res) => {
 
 app.get('/api/auth/me', authMiddleware, async (req, res) => {
   const fresh = await getUserByUid(req.user.uid);
-  res.json({ user: sanitizeUser(fresh) });
+  res.json({ user: await sanitizeUserWithToday(fresh) });
 });
 
 app.get('/api/settings', async (_req, res) => {
@@ -819,6 +834,7 @@ app.get('/api/admin/users', authMiddleware, adminMiddleware, async (req, res) =>
       u.created_at AS createdAt,
       u.updated_at AS updatedAt,
       COALESCE(SUM(ul.tokens),0) AS totalUsedTokens,
+      COALESCE(SUM(CASE WHEN DATE(CONVERT_TZ(ul.created_at, '+00:00', '+08:00')) = DATE(UTC_TIMESTAMP() + INTERVAL 8 HOUR) THEN ul.tokens ELSE 0 END),0) AS usedToday,
       COUNT(DISTINCT ak.id) AS apiKeyCount
     FROM users u
     LEFT JOIN usage_logs ul ON ul.uid = u.uid
@@ -832,6 +848,7 @@ app.get('/api/admin/users', authMiddleware, adminMiddleware, async (req, res) =>
     balance: Number(row.balance || 0),
     dailyQuota: Number(row.dailyQuota || 0),
     totalUsedTokens: Number(row.totalUsedTokens || 0),
+    usedToday: Number(row.usedToday || 0),
     apiKeyCount: Number(row.apiKeyCount || 0),
   })));
 });

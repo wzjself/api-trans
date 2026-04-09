@@ -65,28 +65,24 @@ export const UsageChart: React.FC = () => {
     const totalTokens = Number(profile?.usedQuota || 0);
     const totalCount = Number(profile?.requestCount || logs.length || 0);
     const permanentBalance = Number(profile?.balance || 0);
+    const todayUsed = Number(profile?.usedToday || 0);
 
     let remainingQuota = permanentBalance;
     let quotaLabel = "剩余额度";
     let showPermanentBalance = false;
 
     if (profile?.quotaType && profile.quotaType !== "none") {
-      const today = new Date();
-      const todayUsage = logs
-        .filter(log => isSameDay(log.timestamp, today))
-        .reduce((sum, log) => sum + log.tokens, 0);
-
-      remainingQuota = Math.max(0, Number(profile.dailyQuota || 0) - todayUsage);
+      remainingQuota = Math.max(0, Number(profile.dailyQuota || 0) - todayUsed);
       quotaLabel = profile.quotaType === "daily" ? "今日剩余 (天卡)" : "今日剩余 (月卡)";
       showPermanentBalance = permanentBalance > 0;
     }
 
-    return { totalTokens, totalCount, remainingQuota, quotaLabel, permanentBalance, showPermanentBalance };
-  }, [logs, profile]);
+    return { totalTokens, totalCount, todayUsed, remainingQuota, quotaLabel, permanentBalance, showPermanentBalance };
+  }, [profile, logs]);
 
   return (
     <div className="space-y-6">
-      <div className={`grid grid-cols-1 ${stats.showPermanentBalance ? 'md:grid-cols-4' : 'md:grid-cols-3'} gap-4`}>
+      <div className={`grid grid-cols-1 ${stats.showPermanentBalance ? 'md:grid-cols-5' : 'md:grid-cols-4'} gap-4`}>
         <div className="p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/50 space-y-2 min-w-0">
           <div className="flex items-center gap-2 text-zinc-500 text-sm font-medium">
             <Zap className="w-4 h-4 shrink-0" />
@@ -106,6 +102,16 @@ export const UsageChart: React.FC = () => {
             {stats.totalCount.toLocaleString()}
           </div>
           <div className="text-xs font-normal text-zinc-500">次</div>
+        </div>
+        <div className="p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/50 space-y-2 min-w-0">
+          <div className="flex items-center gap-2 text-zinc-500 text-sm font-medium">
+            <PieChart className="w-4 h-4 shrink-0" />
+            <span>今日已用额度</span>
+          </div>
+          <div className="min-w-0 break-words text-[clamp(1.25rem,2vw,1.75rem)] font-bold tracking-tight leading-tight">
+            {stats.todayUsed.toLocaleString()}
+          </div>
+          <div className="text-xs font-normal text-zinc-500">Tokens</div>
         </div>
         <div className="p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/50 space-y-2 min-w-0">
           <div className="flex items-center gap-2 text-zinc-500 text-sm font-medium">
