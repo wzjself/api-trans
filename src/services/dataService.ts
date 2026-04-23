@@ -125,6 +125,16 @@ export const dataService = {
     return () => { cancelled = true; };
   },
 
+  subscribeInviteInfo: (callback: (inviteInfo: any) => void) => {
+    let cancelled = false;
+    const run = () => apiClient.get('/api/users/me/invite').then((data) => {
+      if (!cancelled) callback(data);
+    }).catch(console.error);
+    run();
+    const timer = window.setInterval(run, POLL_FAST);
+    return () => { cancelled = true; window.clearInterval(timer); };
+  },
+
   updateSettings: async (settings: any) => {
     return apiClient.put('/api/settings', settings);
   },
@@ -155,6 +165,46 @@ export const dataService = {
 
   saveDefaultModel: async (defaultModel: string) => {
     return apiClient.put('/api/admin/default-model', { defaultModel });
+  },
+
+  subscribeImageProviders: (callback: (data: any) => void) => {
+    let cancelled = false;
+    apiClient.get('/api/admin/image-providers').then((data) => {
+      if (!cancelled) callback(data);
+    }).catch(console.error);
+    return () => { cancelled = true; };
+  },
+
+  saveImageProvider: async (provider: any) => {
+    return apiClient.post('/api/admin/image-providers', provider);
+  },
+
+  fetchImageProviderModels: async (baseUrl: string, apiKey: string) => {
+    return apiClient.post('/api/admin/image-providers/fetch-models', { baseUrl, apiKey });
+  },
+
+  deleteImageProvider: async (id: string) => {
+    return apiClient.delete(`/api/admin/image-providers/${encodeURIComponent(id)}`);
+  },
+
+  setImageProviderEnabled: async (id: string, enabled: boolean) => {
+    return apiClient.put(`/api/admin/image-providers/${encodeURIComponent(id)}/enabled`, { enabled });
+  },
+
+  setActiveImageProvider: async (activeImageProviderId: string) => {
+    return apiClient.put('/api/admin/image-providers/active', { activeImageProviderId });
+  },
+
+  saveDefaultImageModel: async (defaultImageModel: string) => {
+    return apiClient.put('/api/admin/default-image-model', { defaultImageModel });
+  },
+
+  getImagePlaygroundConfig: async () => {
+    return apiClient.get('/api/users/me/images/config');
+  },
+
+  generateImage: async (payload: any) => {
+    return apiClient.post('/api/users/me/images/generate', payload);
   },
 
   subscribePlatformSummary: (callback: (summary: any) => void) => {

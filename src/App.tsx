@@ -12,6 +12,7 @@ import { Loader2 } from "lucide-react";
 import { Dashboard } from "./components/Dashboard";
 import { AdminPanel } from "./components/AdminPanel";
 import { Auth } from "./components/Auth";
+import { ImagePlayground } from "./components/ImagePlayground";
 
 const ScreenLoader = () => (
   <div className="min-h-[40vh] flex items-center justify-center bg-transparent">
@@ -21,7 +22,7 @@ const ScreenLoader = () => (
 
 const AppContent: React.FC = () => {
   const { user, loading, isAdmin } = useAuth();
-  const [activeTab, setActiveTab] = useState<"dashboard" | "admin">("dashboard");
+  const [activeTab, setActiveTab] = useState<"dashboard" | "image" | "admin">("dashboard");
 
   if (loading) {
     return (
@@ -40,6 +41,7 @@ const AppContent: React.FC = () => {
         ) : (
           <>
             {activeTab === "dashboard" && <Dashboard />}
+            {activeTab === "image" && <ImagePlayground />}
             {activeTab === "admin" && isAdmin && <AdminPanel />}
           </>
         )}

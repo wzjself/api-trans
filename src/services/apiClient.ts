@@ -16,6 +16,29 @@ export function getAuthToken() {
   return authToken;
 }
 
+function extractErrorMessage(data: unknown, status: number) {
+  if (typeof data === 'string' && data.trim()) return data;
+  if (!data || typeof data !== 'object') return `HTTP ${status}`;
+
+  const value = data as Record<string, unknown>;
+  const directError = value.error;
+  if (typeof directError === 'string' && directError.trim()) return directError;
+  if (directError && typeof directError === 'object') {
+    const nestedMessage = (directError as Record<string, unknown>).message;
+    if (typeof nestedMessage === 'string' && nestedMessage.trim()) return nestedMessage;
+    const nestedCode = (directError as Record<string, unknown>).code;
+    if (typeof nestedCode === 'string' && nestedCode.trim()) return nestedCode;
+  }
+
+  const message = value.message;
+  if (typeof message === 'string' && message.trim()) return message;
+
+  const detail = value.detail;
+  if (typeof detail === 'string' && detail.trim()) return detail;
+
+  return `HTTP ${status}`;
+}
+
 async function request(path: string, options: RequestInit = {}) {
   const headers = new Headers(options.headers || {});
   if (!headers.has('Content-Type') && options.body) headers.set('Content-Type', 'application/json');
@@ -25,8 +48,7 @@ async function request(path: string, options: RequestInit = {}) {
   const text = await res.text();
   const data = text ? (() => { try { return JSON.parse(text); } catch { return text; } })() : null;
   if (!res.ok) {
-    const msg = typeof data === 'object' && data && 'error' in data ? (data as any).error : `HTTP ${res.status}`;
-    throw new Error(msg);
+    throw new Error(extractErrorMessage(data, res.status));
   }
   return data;
 }

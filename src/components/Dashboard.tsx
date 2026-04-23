@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ApiKeyManager } from "./ApiKeyManager";
 import { UsageChart } from "./UsageChart";
 import { Redemption } from "./Redemption";
-import { Globe, Terminal, Copy, Check, Activity, RefreshCw, Wallet, CalendarClock, ChevronLeft, ChevronRight, Bell } from "lucide-react";
+import { Globe, Terminal, Copy, Check, Activity, RefreshCw, Wallet, CalendarClock, ChevronLeft, ChevronRight, Bell, Ticket, Gift, UserPlus } from "lucide-react";
 import { format } from "date-fns";
 
 const API_BASE_URL = import.meta.env.VITE_PUBLIC_API_BASE || window.location.origin;
@@ -97,6 +97,7 @@ export const Dashboard: React.FC = () => {
   const { profile, refreshProfile } = useAuth();
   const [guideLink, setGuideLink] = useState("");
   const [announcement, setAnnouncement] = useState("");
+  const [inviteInfo, setInviteInfo] = useState({ inviteCode: "", validInviteCount: 0, rewardedQuota: 0 });
   const [announcementPopupEnabled, setAnnouncementPopupEnabled] = useState(false);
   const [announcementPopupVersion, setAnnouncementPopupVersion] = useState("");
   const [showAnnouncementModal, setShowAnnouncementModal] = useState(false);
@@ -114,6 +115,18 @@ export const Dashboard: React.FC = () => {
     });
     return () => unsub();
   }, []);
+
+  useEffect(() => {
+    if (!profile) return;
+    const unsub = dataService.subscribeInviteInfo((data) => {
+      setInviteInfo({
+        inviteCode: String(data?.inviteCode || ""),
+        validInviteCount: Number(data?.validInviteCount || 0),
+        rewardedQuota: Number(data?.rewardedQuota || 0),
+      });
+    });
+    return () => unsub();
+  }, [profile]);
 
   const resolvedAnnouncementVersion = useMemo(() => {
     const raw = announcementPopupVersion.trim();
@@ -317,6 +330,52 @@ export const Dashboard: React.FC = () => {
               </div>
               <div className="text-sm text-zinc-700 dark:text-zinc-300 whitespace-pre-wrap break-words min-h-[72px]">
                 {announcement || '暂无公告'}
+              </div>
+            </section>
+
+            <section className="p-6 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/50 space-y-4">
+              <div className="space-y-1">
+                <h3 className="text-lg font-semibold tracking-tight">邀请码</h3>
+                <p className="text-xs text-zinc-500">邀请用户注册，并在其首次兑换月卡或永久额度码后获得奖励。</p>
+              </div>
+              <div className="rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950/50 p-4 space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2 text-sm font-medium">
+                    <Ticket className="w-4 h-4 text-zinc-500" />
+                    <span>当前邀请码</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => safeCopy(inviteInfo.inviteCode)}
+                    className="px-3 py-1.5 rounded-xl border border-zinc-200 dark:border-zinc-800 text-xs flex items-center gap-1 hover:bg-zinc-100 dark:hover:bg-zinc-900"
+                  >
+                    <Copy className="w-3.5 h-3.5" />
+                    复制
+                  </button>
+                </div>
+                <div className="font-mono text-sm break-all text-zinc-900 dark:text-zinc-100">
+                  {inviteInfo.inviteCode || "加载中..."}
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="rounded-2xl border border-zinc-200 dark:border-zinc-800 p-4 space-y-1">
+                  <div className="flex items-center gap-2 text-xs text-zinc-500">
+                    <UserPlus className="w-3.5 h-3.5" />
+                    有效邀请次数
+                  </div>
+                  <div className="text-xl font-semibold">{inviteInfo.validInviteCount.toLocaleString()}</div>
+                </div>
+                <div className="rounded-2xl border border-zinc-200 dark:border-zinc-800 p-4 space-y-1">
+                  <div className="flex items-center gap-2 text-xs text-zinc-500">
+                    <Gift className="w-3.5 h-3.5" />
+                    邀请获得额度
+                  </div>
+                  <div className="text-xl font-semibold">{inviteInfo.rewardedQuota.toLocaleString()}</div>
+                </div>
+              </div>
+              <div className="rounded-2xl border border-dashed border-zinc-200 dark:border-zinc-800 p-4 text-xs text-zinc-500 leading-6">
+                有效邀请规则：受邀用户需要在注册时填写你的邀请码，并且在注册后首次兑换“月卡”或“永久额度”兑换码，才会记为 1 次有效邀请。
+                每个受邀用户最多只计算 1 次有效邀请，邀请成功后你会获得 20M Token 额度奖励。
               </div>
             </section>
           </div>

@@ -11,6 +11,7 @@ const app = express();
 
 const PORT = Number(process.env.PORT || 3000);
 const DIST_DIR = path.join(__dirname, '..', 'dist');
+const GENERATED_IMAGES_DIR = path.join(__dirname, '..', 'data', 'generated-images');
 const TOKEN_SECRET = process.env.TOKEN_SECRET || 'change-me-token-secret';
 const APP_BASE_URL = process.env.APP_BASE_URL || '';
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'wzjself';
@@ -26,6 +27,7 @@ const MYSQL_DATABASE = process.env.MYSQL_DATABASE || 'api_trans';
 
 app.set('trust proxy', true);
 app.use(express.json({ limit: '100mb' }));
+fs.mkdirSync(GENERATED_IMAGES_DIR, { recursive: true });
 
 const pool = mysql.createPool({
   host: MYSQL_HOST,
@@ -44,6 +46,10 @@ function nowIso() {
 
 function randomId(prefix = '') {
   return `${prefix}${crypto.randomBytes(12).toString('hex')}`;
+}
+
+function randomInviteCode() {
+  return `INV-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
 }
 
 function hashPassword(password, salt = crypto.randomBytes(16).toString('hex')) {
@@ -183,6 +189,8 @@ function sanitizeUser(user) {
     balance: Number(rest.balance || 0),
     usedQuota: Number(rest.used_quota || 0),
     requestCount: Number(rest.request_count || 0),
+    inviteCode: rest.invite_code || '',
+    inviterUid: rest.inviter_uid || null,
     quotaType: rest.quota_type || 'none',
     dailyQuota: Number(rest.daily_quota || 0),
     quotaExpiresAt: rest.quota_expires_at,
@@ -237,6 +245,142 @@ function parseModelsJson(value) {
   return [];
 }
 
+function getFirstConfiguredModel(provider) {
+  const models = parseModelsJson(provider?.models_json);
+  return models[0] || '';
+}
+
+function clampImageCount(value) {
+  return Math.max(1, Math.min(4, Number(value || 1) || 1));
+}
+
+function getImageOutputCount(json, fallbackCount = 1) {
+  const items = Array.isArray(json?.data) ? json.data : [];
+  if (items.length > 0) return items.length;
+  return clampImageCount(fallbackCount);
+}
+
+function getGeneratedImageUrl(filename) {
+  const relativePath = `/generated-images/${filename}`;
+  return APP_BASE_URL ? `${APP_BASE_URL.replace(/\/$/, '')}${relativePath}` : relativePath;
+}
+
+function getExtensionFromContentType(contentType = '') {
+  const normalized = String(contentType).toLowerCase();
+  if (normalized.includes('image/png')) return '.png';
+  if (normalized.includes('image/jpeg') || normalized.includes('image/jpg')) return '.jpg';
+  if (normalized.includes('image/webp')) return '.webp';
+  if (normalized.includes('image/gif')) return '.gif';
+  if (normalized.includes('image/svg+xml')) return '.svg';
+  return '.png';
+}
+
+function getExtensionFromUrl(sourceUrl = '') {
+  try {
+    const pathname = new URL(sourceUrl).pathname || '';
+    const ext = path.extname(pathname);
+    return ext && ext.length <= 5 ? ext : '';
+  } catch {
+    return '';
+  }
+}
+
+function resolveUpstreamImageUrl(sourceUrl, providerBaseUrl = '') {
+  const raw = String(sourceUrl || '').trim();
+  if (!raw) return '';
+  if (/^https?:\/\//i.test(raw)) return raw;
+  if (!providerBaseUrl) return raw;
+  try {
+    return new URL(raw, providerBaseUrl.endsWith('/') ? providerBaseUrl : `${providerBaseUrl}/`).toString();
+  } catch {
+    return raw;
+  }
+}
+
+async function stageImageBuffer(buffer, extension = '.png') {
+  const safeExtension = extension && extension.startsWith('.') ? extension : '.png';
+  const filename = `${randomId('img_')}${safeExtension}`;
+  const filePath = path.join(GENERATED_IMAGES_DIR, filename);
+  await fs.promises.writeFile(filePath, buffer);
+  return getGeneratedImageUrl(filename);
+}
+
+async function stageImageFromUrl(sourceUrl, providerBaseUrl = '') {
+  const resolvedUrl = resolveUpstreamImageUrl(sourceUrl, providerBaseUrl);
+  if (!resolvedUrl) return '';
+
+  const response = await fetch(resolvedUrl);
+  if (!response.ok) {
+    throw new Error(`Fetch image failed: HTTP ${response.status}`);
+  }
+
+  const contentType = response.headers.get('content-type') || '';
+  const arrayBuffer = await response.arrayBuffer();
+  const extension = getExtensionFromUrl(resolvedUrl) || getExtensionFromContentType(contentType);
+  return stageImageBuffer(Buffer.from(arrayBuffer), extension);
+}
+
+async function stageImageFromBase64(value, mimeType = 'image/png') {
+  const buffer = Buffer.from(String(value || ''), 'base64');
+  return stageImageBuffer(buffer, getExtensionFromContentType(mimeType));
+}
+
+async function normalizeImageResponseData(json, options = {}) {
+  const { providerBaseUrl = '' } = options;
+  const items = Array.isArray(json?.data) ? json.data : [];
+  const normalized = await Promise.all(items.map(async (item) => {
+    if (item?.url) {
+      try {
+        const stagedUrl = await stageImageFromUrl(item.url, providerBaseUrl);
+        return {
+          url: stagedUrl || resolveUpstreamImageUrl(item.url, providerBaseUrl),
+          revised_prompt: item.revised_prompt || null,
+          file_id: item.file_id || null,
+        };
+      } catch {
+        return {
+          url: resolveUpstreamImageUrl(item.url, providerBaseUrl),
+          revised_prompt: item.revised_prompt || null,
+          file_id: item.file_id || null,
+        };
+      }
+    }
+    if (item?.b64_json) {
+      try {
+        const stagedUrl = await stageImageFromBase64(item.b64_json, item.mime_type || 'image/png');
+        return {
+          url: stagedUrl,
+          revised_prompt: item.revised_prompt || null,
+          file_id: item.file_id || null,
+        };
+      } catch {
+        return {
+          url: `data:${item.mime_type || 'image/png'};base64,${item.b64_json}`,
+          revised_prompt: item.revised_prompt || null,
+          file_id: item.file_id || null,
+        };
+      }
+    }
+    return null;
+  }));
+  return normalized.filter(Boolean);
+}
+
+function sanitizeImageProvider(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    name: row.name,
+    baseUrl: row.base_url,
+    apiKey: row.api_key,
+    enabled: Boolean(row.enabled),
+    models: parseModelsJson(row.models_json),
+    pricePerImage: Number(row.price_per_image || 0),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
 async function query(sql, params = {}) {
   const [rows] = await pool.execute(sql, params);
   return rows;
@@ -286,8 +430,85 @@ async function getUserByEmail(email) {
   return rows[0] || null;
 }
 
+async function getUserByInviteCode(inviteCode) {
+  const rows = await query('SELECT * FROM users WHERE invite_code = :invite_code LIMIT 1', { invite_code: inviteCode });
+  return rows[0] || null;
+}
+
+async function generateUniqueInviteCode() {
+  for (let i = 0; i < 10; i++) {
+    const inviteCode = randomInviteCode();
+    const existing = await getUserByInviteCode(inviteCode);
+    if (!existing) return inviteCode;
+  }
+  throw new Error('Failed to generate unique invite code');
+}
+
+async function ensureUserInviteCode(uid) {
+  const user = await getUserByUid(uid);
+  if (!user) return null;
+  if (String(user.invite_code || '').trim()) return user.invite_code;
+  const inviteCode = await generateUniqueInviteCode();
+  await query('UPDATE users SET invite_code = :invite_code WHERE uid = :uid', { invite_code: inviteCode, uid });
+  return inviteCode;
+}
+
+async function backfillInviteCodes() {
+  const rows = await query(`SELECT uid FROM users WHERE invite_code IS NULL OR invite_code = ''`);
+  for (const row of rows) {
+    await ensureUserInviteCode(row.uid);
+  }
+}
+
+async function getInviteStats(uid) {
+  const [summary] = await query(
+    `SELECT COUNT(*) AS validInviteCount, COALESCE(SUM(reward_tokens), 0) AS rewardedQuota
+     FROM invite_rewards WHERE inviter_uid = :uid`,
+    { uid }
+  );
+  return {
+    validInviteCount: Number(summary?.validInviteCount || 0),
+    rewardedQuota: Number(summary?.rewardedQuota || 0),
+  };
+}
+
+async function rewardInviterForQualifiedRedeem(inviteeUid, redeemedCode, redeemedType) {
+  const invitee = await getUserByUid(inviteeUid);
+  if (!invitee?.inviter_uid) return null;
+
+  const existing = await query('SELECT id FROM invite_rewards WHERE invitee_uid = :invitee_uid LIMIT 1', {
+    invitee_uid: inviteeUid,
+  });
+  if (existing.length) return null;
+
+  const rewardTokens = 20_000_000;
+  await query('UPDATE users SET balance = balance + :reward WHERE uid = :uid', {
+    reward: rewardTokens,
+    uid: invitee.inviter_uid,
+  });
+  await query(
+    `INSERT INTO invite_rewards (id, inviter_uid, invitee_uid, reward_tokens, source_code, redeemed_code, redeemed_type)
+     VALUES (:id, :inviter_uid, :invitee_uid, :reward_tokens, :source_code, :redeemed_code, :redeemed_type)`,
+    {
+      id: randomId('invite_reward_'),
+      inviter_uid: invitee.inviter_uid,
+      invitee_uid: inviteeUid,
+      reward_tokens: rewardTokens,
+      source_code: invitee.invite_code_used || '',
+      redeemed_code: redeemedCode,
+      redeemed_type: redeemedType,
+    }
+  );
+  return { inviterUid: invitee.inviter_uid, rewardTokens };
+}
+
 async function getEnabledProviders() {
   const rows = await query('SELECT * FROM upstream_providers WHERE enabled = 1 ORDER BY updated_at DESC, created_at DESC');
+  return rows;
+}
+
+async function getEnabledImageProviders() {
+  const rows = await query('SELECT * FROM image_providers WHERE enabled = 1 ORDER BY updated_at DESC, created_at DESC');
   return rows;
 }
 
@@ -310,6 +531,245 @@ async function getProviderRouting(modelHint = '') {
   return { provider: matched || providers[0], model: requestedModel, providers };
 }
 
+async function getImageProviderRouting(modelHint = '') {
+  const settings = await getSetting('system', {});
+  const defaultImageModel = String(settings.defaultImageModel || '').trim();
+  const activeImageProviderId = String(settings.activeImageProviderId || '').trim();
+  const requestedModel = String(modelHint || defaultImageModel || '').trim();
+  const providers = await getEnabledImageProviders();
+  if (!providers.length) {
+    return { provider: null, model: requestedModel, providers, activeProviderId: activeImageProviderId };
+  }
+
+  const activeProvider = activeImageProviderId
+    ? providers.find((row) => row.id === activeImageProviderId)
+    : null;
+  if (activeProvider) {
+    const activeModels = parseModelsJson(activeProvider.models_json);
+    const resolvedModel = requestedModel && (activeModels.length === 0 || activeModels.includes(requestedModel))
+      ? requestedModel
+      : (getFirstConfiguredModel(activeProvider) || requestedModel);
+    return {
+      provider: activeProvider,
+      model: resolvedModel,
+      providers,
+      activeProviderId: activeImageProviderId,
+    };
+  }
+
+  if (requestedModel) {
+    const matched = providers.find((row) => {
+      const models = parseModelsJson(row.models_json);
+      return models.includes(requestedModel);
+    });
+    if (matched) {
+      return {
+        provider: matched,
+        model: requestedModel,
+        providers,
+        activeProviderId: activeImageProviderId,
+      };
+    }
+  }
+
+  return {
+    provider: providers[0],
+    model: requestedModel || getFirstConfiguredModel(providers[0]),
+    providers,
+    activeProviderId: activeImageProviderId,
+  };
+}
+
+async function fetchImageUpstreamResponse(target, headers, payload, responseFormat = 'json') {
+  const response = await fetch(target, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(payload),
+  });
+  const contentType = response.headers.get('content-type') || 'application/json';
+  const text = await response.text();
+
+  if (!response.ok) {
+    const error = new Error(text || `HTTP ${response.status}`);
+    error.statusCode = response.status;
+    error.contentType = contentType;
+    error.responseText = text;
+    throw error;
+  }
+
+  if (responseFormat === 'text') {
+    return { status: response.status, contentType, text };
+  }
+
+  return {
+    status: response.status,
+    contentType,
+    json: contentType.includes('application/json') && text ? JSON.parse(text) : null,
+    text,
+  };
+}
+
+async function requestImagesWithFanout(target, headers, payload) {
+  const desiredCount = clampImageCount(payload?.n || 1);
+  if (desiredCount <= 1) {
+    return fetchImageUpstreamResponse(target, headers, payload);
+  }
+
+  const merged = {
+    created: Math.floor(Date.now() / 1000),
+    data: [],
+  };
+
+  for (let index = 0; index < desiredCount; index++) {
+    const result = await fetchImageUpstreamResponse(target, headers, { ...payload, n: 1 });
+    if (!Array.isArray(result?.json?.data) || result.json.data.length === 0) {
+      const error = new Error(`Upstream image request ${index + 1}/${desiredCount} returned no image data`);
+      error.statusCode = 502;
+      throw error;
+    }
+    if (result.json?.created) merged.created = result.json.created;
+    merged.data.push(...result.json.data);
+  }
+
+  return {
+    status: 200,
+    contentType: 'application/json',
+    json: merged,
+    text: JSON.stringify(merged),
+  };
+}
+
+async function fetchRemoteModels(baseUrl, apiKey = '') {
+  const response = await fetch(`${String(baseUrl || '').replace(/\/$/, '')}/models`, {
+    headers: {
+      'Content-Type': 'application/json',
+      ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+    },
+  });
+  const text = await response.text();
+  let models = [];
+  try {
+    const json = JSON.parse(text);
+    models = Array.isArray(json?.data) ? json.data.map((item) => item.id).filter(Boolean) : [];
+  } catch {}
+  return {
+    ok: response.ok,
+    status: response.status,
+    models,
+    raw: text,
+    contentType: response.headers.get('content-type') || 'application/json',
+  };
+}
+
+async function proxyImageRequest(req, res, user, apiKeyId = null) {
+  const requestPath = `/v1/${req.params[0] || ''}`;
+  const routing = await getImageProviderRouting(req.body?.model || '');
+  const provider = routing.provider;
+  const requestedModel = String(req.body?.model || routing.model || getFirstConfiguredModel(provider) || 'gpt-image-1');
+
+  if (!provider?.base_url) {
+    await recordRequestOnly(user, apiKeyId, null, requestedModel, requestPath, 503, 0, 'No enabled image provider configured');
+    return res.status(503).json({ error: 'No enabled image provider configured' });
+  }
+
+  const billable = req.method === 'POST' && requestPath.startsWith('/v1/images/');
+  const requestedCount = clampImageCount(req.body?.n || 1);
+  const pricePerImage = Math.max(0, Number(provider.price_per_image || 0));
+  const estimatedCost = billable ? requestedCount * pricePerImage : 0;
+
+  if (estimatedCost > 0) {
+    const quota = await getQuotaStatus(user);
+    if (quota.remaining < estimatedCost) {
+      await recordRequestOnly(user, apiKeyId, provider.id, requestedModel, requestPath, 402, 0, 'Quota exhausted');
+      return res.status(402).json({ error: 'Quota exhausted' });
+    }
+  }
+
+  const target = `${String(provider.base_url).replace(/\/$/, '')}/${req.params[0] || ''}`;
+  const contentType = String(req.headers['content-type'] || '').trim();
+  const upstreamHeaders = {
+    ...(contentType ? { 'Content-Type': contentType } : {}),
+    ...(provider.api_key ? { Authorization: `Bearer ${provider.api_key}` } : {}),
+  };
+
+  let requestBody;
+  let duplex;
+  if (!['GET', 'HEAD'].includes(req.method)) {
+    if (contentType.includes('application/json')) {
+      const body = req.body && typeof req.body === 'object' ? { ...req.body } : {};
+      if (!body.model) body.model = requestedModel;
+      if (billable && !body.n) body.n = requestedCount;
+      requestBody = JSON.stringify(body);
+    } else {
+      requestBody = req;
+      duplex = 'half';
+    }
+  }
+
+  try {
+    let responseStatus;
+    let responseType;
+    let textResp;
+
+    if (req.method === 'POST' && contentType.includes('application/json') && requestPath === '/v1/images/generations') {
+      const parsedBody = JSON.parse(requestBody);
+      const result = await requestImagesWithFanout(target, upstreamHeaders, parsedBody);
+      responseStatus = result.status;
+      responseType = result.contentType;
+      textResp = result.text;
+    } else {
+      const response = await fetch(target, {
+        method: req.method,
+        headers: upstreamHeaders,
+        body: requestBody,
+        ...(duplex ? { duplex } : {}),
+      });
+      responseStatus = response.status;
+      responseType = response.headers.get('content-type') || 'application/json';
+      textResp = await response.text();
+    }
+
+    if (responseStatus >= 400) {
+      await recordRequestOnly(user, apiKeyId, provider.id, requestedModel, requestPath, responseStatus, 0, textResp.slice(0, 500));
+      return res.status(responseStatus).type(responseType).send(textResp);
+    }
+
+    if (billable) {
+      if (responseType.includes('application/json')) {
+        try {
+          const json = JSON.parse(textResp);
+          json.data = await normalizeImageResponseData(json, { providerBaseUrl: provider.base_url });
+          const actualCount = getImageOutputCount(json, requestedCount);
+          const actualCost = actualCount * pricePerImage;
+          if (actualCost > 0) {
+            await chargeUser(user, actualCost, requestedModel, provider.id, requestPath, 0, 0, apiKeyId, responseStatus, 1, null);
+          } else {
+            await recordRequestOnly(user, apiKeyId, provider.id, requestedModel, requestPath, responseStatus, 1, null);
+          }
+          return res.status(responseStatus).type(responseType).send(JSON.stringify(json));
+        } catch {}
+      }
+
+      if (estimatedCost > 0) {
+        await chargeUser(user, estimatedCost, requestedModel, provider.id, requestPath, 0, 0, apiKeyId, responseStatus, 1, null);
+      } else {
+        await recordRequestOnly(user, apiKeyId, provider.id, requestedModel, requestPath, responseStatus, 1, null);
+      }
+    } else {
+      await recordRequestOnly(user, apiKeyId, provider.id, requestedModel, requestPath, responseStatus, 1, null);
+    }
+
+    return res.status(responseStatus).type(responseType).send(textResp);
+  } catch (error) {
+    const statusCode = Number(error?.statusCode || 502);
+    const message = error?.responseText || error?.message || String(error);
+    await recordRequestOnly(user, apiKeyId, provider.id, requestedModel, requestPath, statusCode, 0, message);
+    return res.status(statusCode).type(error?.contentType || 'application/json').send(
+      error?.responseText || JSON.stringify({ error: 'Image proxy failed', detail: message })
+    );
+  }
+}
+
 async function ensureColumn(tableName, columnName, alterSql) {
   const rows = await query(
     `SELECT COUNT(*) AS count FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = :schema AND TABLE_NAME = :table AND COLUMN_NAME = :column`,
@@ -330,6 +790,9 @@ async function ensureSchema() {
     balance BIGINT NOT NULL DEFAULT 0,
     used_quota BIGINT NOT NULL DEFAULT 0,
     request_count BIGINT NOT NULL DEFAULT 0,
+    invite_code VARCHAR(32) NULL UNIQUE,
+    inviter_uid VARCHAR(64) NULL,
+    invite_code_used VARCHAR(32) NULL,
     quota_type ENUM('none','daily','monthly','permanent') NOT NULL DEFAULT 'none',
     daily_quota BIGINT NOT NULL DEFAULT 0,
     quota_expires_at DATETIME NULL,
@@ -409,6 +872,20 @@ async function ensureSchema() {
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`);
 
+  await query(`CREATE TABLE IF NOT EXISTS invite_rewards (
+    id VARCHAR(64) PRIMARY KEY,
+    inviter_uid VARCHAR(64) NOT NULL,
+    invitee_uid VARCHAR(64) NOT NULL UNIQUE,
+    reward_tokens BIGINT NOT NULL DEFAULT 0,
+    source_code VARCHAR(32) NULL,
+    redeemed_code VARCHAR(64) NULL,
+    redeemed_type ENUM('permanent','daily','monthly') NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_invite_rewards_inviter (inviter_uid, created_at),
+    CONSTRAINT fk_invite_rewards_inviter FOREIGN KEY (inviter_uid) REFERENCES users(uid) ON DELETE CASCADE,
+    CONSTRAINT fk_invite_rewards_invitee FOREIGN KEY (invitee_uid) REFERENCES users(uid) ON DELETE CASCADE
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`);
+
   await query(`CREATE TABLE IF NOT EXISTS settings (
     setting_key VARCHAR(64) PRIMARY KEY,
     setting_value JSON NOT NULL,
@@ -426,8 +903,23 @@ async function ensureSchema() {
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`);
 
+  await query(`CREATE TABLE IF NOT EXISTS image_providers (
+    id VARCHAR(64) PRIMARY KEY,
+    name VARCHAR(191) NOT NULL,
+    base_url VARCHAR(500) NOT NULL,
+    api_key TEXT NULL,
+    models_json JSON NULL,
+    price_per_image BIGINT NOT NULL DEFAULT 0,
+    enabled TINYINT(1) NOT NULL DEFAULT 1,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`);
+
   await ensureColumn('users', 'used_quota', 'ALTER TABLE users ADD COLUMN used_quota BIGINT NOT NULL DEFAULT 0');
   await ensureColumn('users', 'request_count', 'ALTER TABLE users ADD COLUMN request_count BIGINT NOT NULL DEFAULT 0');
+  await ensureColumn('users', 'invite_code', 'ALTER TABLE users ADD COLUMN invite_code VARCHAR(32) NULL UNIQUE');
+  await ensureColumn('users', 'inviter_uid', 'ALTER TABLE users ADD COLUMN inviter_uid VARCHAR(64) NULL');
+  await ensureColumn('users', 'invite_code_used', 'ALTER TABLE users ADD COLUMN invite_code_used VARCHAR(32) NULL');
 
   const admin = await getUserByEmail(ADMIN_EMAIL);
   const adminHash = hashPassword(ADMIN_PASSWORD);
@@ -449,6 +941,8 @@ async function ensureSchema() {
     );
   }
 
+  await backfillInviteCodes();
+
   const currentSettings = await getSetting('system', null);
   if (!currentSettings) {
     await setSetting('system', {
@@ -458,6 +952,8 @@ async function ensureSchema() {
       announcementPopupVersion: '',
       appBaseUrl: APP_BASE_URL,
       defaultModel: '',
+      defaultImageModel: '',
+      activeImageProviderId: '',
     });
   } else {
     await setSetting('system', {
@@ -467,6 +963,8 @@ async function ensureSchema() {
       announcementPopupVersion: String(currentSettings.announcementPopupVersion || ''),
       appBaseUrl: APP_BASE_URL || currentSettings.appBaseUrl || '',
       defaultModel: currentSettings.defaultModel || currentSettings.activeModel || '',
+      defaultImageModel: currentSettings.defaultImageModel || '',
+      activeImageProviderId: currentSettings.activeImageProviderId || '',
     });
   }
 
@@ -636,30 +1134,49 @@ async function findUserByApiKey(key) {
 }
 
 app.get('/api/health', async (_req, res) => {
-  const routing = await getProviderRouting();
+  const [routing, imageRouting] = await Promise.all([getProviderRouting(), getImageProviderRouting()]);
   res.json({
     ok: true,
     appBaseUrl: APP_BASE_URL || null,
     mysql: true,
     upstreamConfigured: Boolean(routing.provider?.base_url),
+    imageUpstreamConfigured: Boolean(imageRouting.provider?.base_url),
     activeProvider: routing.provider ? { id: routing.provider.id, name: routing.provider.name } : null,
+    activeImageProvider: imageRouting.provider ? { id: imageRouting.provider.id, name: imageRouting.provider.name } : null,
     activeModel: routing.model || '',
+    activeImageModel: imageRouting.model || '',
     enabledProviders: routing.providers.length,
+    enabledImageProviders: imageRouting.providers.length,
   });
 });
 
 app.post('/api/auth/register', async (req, res) => {
   try {
     await ensureRegisterAllowed(req);
-    const { email, password } = req.body || {};
+    const { email, password, inviteCode } = req.body || {};
     if (!email || !password) return res.status(400).json({ error: '账号和密码必填' });
     const existing = await getUserByEmail(email);
     if (existing) return res.status(409).json({ error: '账号已存在' });
+    const normalizedInviteCode = String(inviteCode || '').trim().toUpperCase();
+    let inviter = null;
+    if (normalizedInviteCode) {
+      inviter = await getUserByInviteCode(normalizedInviteCode);
+      if (!inviter) return res.status(400).json({ error: '邀请码无效' });
+    }
     const uid = randomId('user_');
+    const ownInviteCode = await generateUniqueInviteCode();
     await query(
-      `INSERT INTO users (uid, email, password_hash, role, balance, quota_type, daily_quota)
-       VALUES (:uid, :email, :password_hash, 'user', :balance, 'none', 0)`,
-      { uid, email, password_hash: hashPassword(password), balance: USER_INITIAL_BALANCE }
+      `INSERT INTO users (uid, email, password_hash, role, balance, quota_type, daily_quota, invite_code, inviter_uid, invite_code_used)
+       VALUES (:uid, :email, :password_hash, 'user', :balance, 'none', 0, :invite_code, :inviter_uid, :invite_code_used)`,
+      {
+        uid,
+        email,
+        password_hash: hashPassword(password),
+        balance: USER_INITIAL_BALANCE,
+        invite_code: ownInviteCode,
+        inviter_uid: inviter?.uid || null,
+        invite_code_used: normalizedInviteCode || null,
+      }
     );
     await recordRegisterSuccess(req);
     const user = await getUserByUid(uid);
@@ -695,6 +1212,18 @@ app.post('/api/auth/login', async (req, res) => {
 app.get('/api/auth/me', authMiddleware, async (req, res) => {
   const fresh = await getUserByUid(req.user.uid);
   res.json({ user: await sanitizeUserWithToday(fresh) });
+});
+
+app.get('/api/users/me/invite', authMiddleware, async (req, res) => {
+  const fresh = await getUserByUid(req.user.uid);
+  if (!fresh) return res.status(404).json({ error: 'User not found' });
+  const inviteCode = await ensureUserInviteCode(req.user.uid);
+  const stats = await getInviteStats(req.user.uid);
+  res.json({
+    inviteCode,
+    validInviteCount: stats.validInviteCount,
+    rewardedQuota: stats.rewardedQuota,
+  });
 });
 
 app.get('/api/settings', async (_req, res) => {
@@ -733,19 +1262,8 @@ app.post('/api/admin/providers/fetch-models', authMiddleware, adminMiddleware, a
   if (!baseUrl) return res.status(400).json({ error: 'baseUrl is required' });
 
   try {
-    const response = await fetch(`${baseUrl}/models`, {
-      headers: {
-        'Content-Type': 'application/json',
-        ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
-      },
-    });
-    const text = await response.text();
-    let models = [];
-    try {
-      const json = JSON.parse(text);
-      models = Array.isArray(json?.data) ? json.data.map((item) => item.id).filter(Boolean) : [];
-    } catch {}
-    res.json({ ok: response.ok, status: response.status, models, raw: text.slice(0, 5000) });
+    const result = await fetchRemoteModels(baseUrl, apiKey);
+    res.json({ ok: result.ok, status: result.status, models: result.models, raw: result.raw.slice(0, 5000) });
   } catch (error) {
     res.status(502).json({ error: 'Fetch models failed', detail: String(error) });
   }
@@ -804,6 +1322,196 @@ app.put('/api/admin/default-model', authMiddleware, adminMiddleware, async (req,
   };
   await setSetting('system', nextValue);
   res.json(nextValue);
+});
+
+app.get('/api/admin/image-providers', authMiddleware, adminMiddleware, async (_req, res) => {
+  const rows = await query('SELECT * FROM image_providers ORDER BY created_at DESC');
+  const system = await getSetting('system', {});
+  res.json({
+    providers: rows.map((row) => sanitizeImageProvider(row)),
+    activeImageProviderId: String(system.activeImageProviderId || ''),
+    defaultImageModel: String(system.defaultImageModel || ''),
+  });
+});
+
+app.post('/api/admin/image-providers/fetch-models', authMiddleware, adminMiddleware, async (req, res) => {
+  const baseUrl = String(req.body?.baseUrl || '').replace(/\/$/, '');
+  const apiKey = String(req.body?.apiKey || '');
+  if (!baseUrl) return res.status(400).json({ error: 'baseUrl is required' });
+
+  try {
+    const result = await fetchRemoteModels(baseUrl, apiKey);
+    res.json({ ok: result.ok, status: result.status, models: result.models, raw: result.raw.slice(0, 5000) });
+  } catch (error) {
+    res.status(502).json({ error: 'Fetch image models failed', detail: String(error) });
+  }
+});
+
+app.post('/api/admin/image-providers', authMiddleware, adminMiddleware, async (req, res) => {
+  const body = req.body || {};
+  const id = body.id || randomId('imgprov_');
+  const models = Array.isArray(body.models) ? body.models : [];
+  await query(
+    `INSERT INTO image_providers (id, name, base_url, api_key, models_json, price_per_image, enabled)
+     VALUES (:id, :name, :base_url, :api_key, :models_json, :price_per_image, :enabled)
+     ON DUPLICATE KEY UPDATE
+       name = VALUES(name),
+       base_url = VALUES(base_url),
+       api_key = VALUES(api_key),
+       models_json = VALUES(models_json),
+       price_per_image = VALUES(price_per_image),
+       enabled = VALUES(enabled),
+       updated_at = NOW()`,
+    {
+      id,
+      name: body.name || 'Unnamed image provider',
+      base_url: String(body.baseUrl || '').replace(/\/$/, ''),
+      api_key: body.apiKey || '',
+      models_json: JSON.stringify(models),
+      price_per_image: Math.max(0, Number(body.pricePerImage || 0)),
+      enabled: body.enabled === false ? 0 : 1,
+    }
+  );
+  const rows = await query('SELECT * FROM image_providers WHERE id = :id LIMIT 1', { id });
+  res.json(sanitizeImageProvider(rows[0]));
+});
+
+app.delete('/api/admin/image-providers/:id', authMiddleware, adminMiddleware, async (req, res) => {
+  await query('DELETE FROM image_providers WHERE id = :id', { id: req.params.id });
+  const current = await getSetting('system', {});
+  if (String(current.activeImageProviderId || '') === req.params.id) {
+    await setSetting('system', {
+      ...current,
+      activeImageProviderId: '',
+    });
+  }
+  res.json({ ok: true });
+});
+
+app.put('/api/admin/image-providers/:id/enabled', authMiddleware, adminMiddleware, async (req, res) => {
+  await query('UPDATE image_providers SET enabled = :enabled WHERE id = :id', { id: req.params.id, enabled: req.body?.enabled ? 1 : 0 });
+  res.json({ ok: true });
+});
+
+app.put('/api/admin/image-providers/active', authMiddleware, adminMiddleware, async (req, res) => {
+  const current = await getSetting('system', {});
+  const nextValue = {
+    ...current,
+    activeImageProviderId: String(req.body?.activeImageProviderId || ''),
+  };
+  await setSetting('system', nextValue);
+  res.json(nextValue);
+});
+
+app.put('/api/admin/default-image-model', authMiddleware, adminMiddleware, async (req, res) => {
+  const current = await getSetting('system', {});
+  const nextValue = {
+    ...current,
+    defaultImageModel: String(req.body?.defaultImageModel || ''),
+  };
+  await setSetting('system', nextValue);
+  res.json(nextValue);
+});
+
+app.get('/api/users/me/images/config', authMiddleware, async (_req, res) => {
+  const routing = await getImageProviderRouting();
+  const provider = routing.provider;
+  const configuredModels = parseModelsJson(provider?.models_json);
+  const defaultModel = routing.model || configuredModels[0] || '';
+  const models = configuredModels.length > 0
+    ? configuredModels
+    : (defaultModel ? [defaultModel] : []);
+
+  res.json({
+    enabled: Boolean(provider?.base_url),
+    activeProvider: provider ? {
+      id: provider.id,
+      name: provider.name,
+      pricePerImage: Number(provider.price_per_image || 0),
+    } : null,
+    defaultModel,
+    models,
+  });
+});
+
+app.post('/api/users/me/images/generate', authMiddleware, async (req, res) => {
+  const requestPath = '/api/users/me/images/generate';
+  const routing = await getImageProviderRouting(req.body?.model || '');
+  const provider = routing.provider;
+  const requestedModel = String(req.body?.model || routing.model || getFirstConfiguredModel(provider) || 'gpt-image-1');
+  const requestedCount = clampImageCount(req.body?.n || 1);
+
+  if (!provider?.base_url) {
+    await recordRequestOnly(req.user, null, null, requestedModel, requestPath, 503, 0, 'No enabled image provider configured');
+    return res.status(503).json({ error: 'No enabled image provider configured' });
+  }
+
+  const pricePerImage = Math.max(0, Number(provider.price_per_image || 0));
+  const estimatedCost = requestedCount * pricePerImage;
+  if (estimatedCost > 0) {
+    const quota = await getQuotaStatus(req.user);
+    if (quota.remaining < estimatedCost) {
+      await recordRequestOnly(req.user, null, provider.id, requestedModel, requestPath, 402, 0, 'Quota exhausted');
+      return res.status(402).json({ error: 'Quota exhausted' });
+    }
+  }
+
+  const payload = {
+    model: requestedModel,
+    prompt: String(req.body?.prompt || ''),
+    n: requestedCount,
+    size: String(req.body?.size || '1024x1024'),
+    ...(req.body?.quality ? { quality: req.body.quality } : {}),
+    ...(req.body?.style ? { style: req.body.style } : {}),
+    ...(req.body?.response_format ? { response_format: req.body.response_format } : {}),
+    user: req.user.uid,
+  };
+
+  if (!payload.prompt.trim()) {
+    return res.status(400).json({ error: 'Prompt is required' });
+  }
+
+  try {
+    const result = await requestImagesWithFanout(
+      `${String(provider.base_url).replace(/\/$/, '')}/images/generations`,
+      {
+        'Content-Type': 'application/json',
+        ...(provider.api_key ? { Authorization: `Bearer ${provider.api_key}` } : {}),
+      },
+      payload
+    );
+
+    let parsed = result.json;
+    if (!parsed) {
+      await recordRequestOnly(req.user, null, provider.id, requestedModel, requestPath, 502, 0, 'Invalid JSON response from image provider');
+      return res.status(502).json({ error: 'Invalid JSON response from image provider' });
+    }
+
+    const normalizedData = await normalizeImageResponseData(parsed, { providerBaseUrl: provider.base_url });
+    const actualCount = normalizedData.length;
+    const actualCost = actualCount * pricePerImage;
+    if (actualCost > 0) {
+      await chargeUser(req.user, actualCost, requestedModel, provider.id, requestPath, 0, 0, null, result.status, 1, null);
+    } else {
+      await recordRequestOnly(req.user, null, provider.id, requestedModel, requestPath, result.status, 1, null);
+    }
+
+    res.json({
+      created: parsed.created || Math.floor(Date.now() / 1000),
+      data: normalizedData,
+      model: requestedModel,
+      activeProvider: {
+        id: provider.id,
+        name: provider.name,
+        pricePerImage,
+      },
+    });
+  } catch (error) {
+    const statusCode = Number(error?.statusCode || 502);
+    const message = error?.responseText || error?.message || String(error);
+    await recordRequestOnly(req.user, null, provider.id, requestedModel, requestPath, statusCode, 0, message);
+    res.status(statusCode).json({ error: error?.responseText ? message : 'Image proxy failed', detail: message });
+  }
 });
 
 app.get('/api/users/me/api-keys', authMiddleware, async (req, res) => {
@@ -1035,6 +1743,9 @@ app.post('/api/redeem', authMiddleware, async (req, res) => {
     'UPDATE redemption_codes SET is_used = 1, used_by = :uid, used_at = NOW() WHERE code = :code',
     { uid: req.user.uid, code }
   );
+  if (item.type === 'monthly' || item.type === 'permanent') {
+    await rewardInviterForQualifiedRedeem(req.user.uid, code, item.type);
+  }
   const fresh = await getUserByUid(req.user.uid);
   res.json({ ok: true, user: sanitizeUser(fresh) });
 });
@@ -1139,30 +1850,39 @@ app.delete('/api/admin/codes/:code', authMiddleware, adminMiddleware, async (req
 });
 
 app.get('/v1/models', async (_req, res) => {
-  const routing = await getProviderRouting();
-  const provider = routing.provider;
-  if (!provider) {
+  const [routing, imageRouting] = await Promise.all([getProviderRouting(), getImageProviderRouting()]);
+  const items = new Map();
+  const pushModel = (id, ownedBy) => {
+    if (!id || items.has(id)) return;
+    items.set(id, { id, object: 'model', owned_by: ownedBy || 'local' });
+  };
+
+  if (routing.provider) {
+    const localModels = parseModelsJson(routing.provider.models_json);
+    if (localModels.length > 0) {
+      localModels.forEach((model) => pushModel(model, routing.provider.name));
+    } else {
+      try {
+        const result = await fetchRemoteModels(routing.provider.base_url, routing.provider.api_key);
+        result.models.forEach((model) => pushModel(model, routing.provider.name));
+      } catch {}
+    }
+  }
+
+  if (imageRouting.provider) {
+    const imageModels = parseModelsJson(imageRouting.provider.models_json);
+    if (imageModels.length > 0) {
+      imageModels.forEach((model) => pushModel(model, imageRouting.provider.name));
+    } else {
+      pushModel(imageRouting.model || getFirstConfiguredModel(imageRouting.provider), imageRouting.provider.name);
+    }
+  }
+
+  if (!items.size) {
     return res.json({ object: 'list', data: [{ id: 'unconfigured', object: 'model', owned_by: 'local' }] });
   }
 
-  const localModels = parseModelsJson(provider.models_json);
-
-  if (localModels.length > 0) {
-    return res.json({ object: 'list', data: localModels.map((m) => ({ id: m, object: 'model', owned_by: provider.name })) });
-  }
-
-  try {
-    const response = await fetch(`${provider.base_url.replace(/\/$/, '')}/models`, {
-      headers: {
-        'Content-Type': 'application/json',
-        ...(provider.api_key ? { Authorization: `Bearer ${provider.api_key}` } : {}),
-      },
-    });
-    const text = await response.text();
-    res.status(response.status).type(response.headers.get('content-type') || 'application/json').send(text);
-  } catch (error) {
-    res.status(502).json({ error: 'Upstream unavailable', detail: String(error) });
-  }
+  res.json({ object: 'list', data: [...items.values()] });
 });
 
 app.post('/api/users/me/api-keys/:id/test-models', authMiddleware, async (req, res) => {
@@ -1200,10 +1920,14 @@ app.all(/^\/v1\/(.+)/, async (req, res) => {
   const found = await findUserByApiKey(apiKey);
   if (!found) return res.status(401).json({ error: 'Invalid API key' });
 
+  const requestPath = `/v1/${req.params[0] || ''}`;
+  if (requestPath.startsWith('/v1/images/')) {
+    return proxyImageRequest(req, res, found, found.id);
+  }
+
   const routing = await getProviderRouting(req.body?.model || '');
   const provider = routing.provider;
   const activeModel = routing.model;
-  const requestPath = `/v1/${req.params[0] || ''}`;
   const requestedModel = req.body?.model || activeModel || 'unknown';
   if (!provider?.base_url) {
     await recordRequestOnly(found, found.id, null, requestedModel, requestPath, 503, 0, 'No enabled upstream provider configured');
@@ -1333,6 +2057,10 @@ app.get('/healthz', async (_req, res) => {
 });
 
 if (fs.existsSync(DIST_DIR)) {
+  app.use('/generated-images', express.static(GENERATED_IMAGES_DIR, {
+    maxAge: '1d',
+    fallthrough: false,
+  }));
   app.use(express.static(DIST_DIR));
   app.get(/^(?!\/api\/|\/v1\/).*/, (_req, res) => {
     res.sendFile(path.join(DIST_DIR, 'index.html'));
